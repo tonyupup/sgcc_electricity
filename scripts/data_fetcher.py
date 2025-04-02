@@ -101,7 +101,7 @@ class DataFetcher:
             os.getenv("ENABLE_DATABASE_STORAGE", "false").lower() == "true"
         )
         self.DRIVER_IMPLICITY_WAIT_TIME = int(
-            os.getenv("DRIVER_IMPLICITY_WAIT_TIME", 20)
+            os.getenv("DRIVER_IMPLICITY_WAIT_TIME", 10)
         )
         self.RETRY_TIMES_LIMIT = int(os.getenv("RETRY_TIMES_LIMIT", 5))
         self.LOGIN_EXPECTED_TIME = int(os.getenv("LOGIN_EXPECTED_TIME", 10))
@@ -356,7 +356,12 @@ class DataFetcher:
                     logging.info(f"Sliding CAPTCHA recognition success, login success.")
                     return True
                 else:
-                    err_msg = self._visible_elem(By.XPATH, "/div[@class='errmsg-tip']")
+                    logging.warning(
+                        f"wait login success jump failed, retry times: {retry_times}"
+                    )
+                    err_msg = self._visible_elem(
+                        By.XPATH, "//div[@class='errmsg-tip']", 10
+                    )
                     if err_msg:
                         err_msg = err_msg.text
                         logging.error(f"Sliding CAPTCHA recognition failed, {err_msg}")
@@ -385,18 +390,10 @@ class DataFetcher:
         logging.info("Webdriver initialized.")
         updator = SensorUpdator()
 
-        try:
-            if self._login(
-                phone_code=os.getenv("DEBUG_MODE", "false").lower() == "true"
-            ):
-                logging.info("login successed !")
-            else:
-                logging.info("login unsuccessed !")
-                return
-        except Exception as e:
-            logging.error(
-                f"Webdriver quit abnormly, reason: {e}. {self.RETRY_TIMES_LIMIT} retry times left."
-            )
+        if self._login(phone_code=os.getenv("DEBUG_MODE", "false").lower() == "true"):
+            logging.info("login successed !")
+        else:
+            logging.info("login unsuccessed !")
             return
 
         logging.info(f"Login successfully on {LOGIN_URL}")

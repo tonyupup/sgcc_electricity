@@ -3,7 +3,7 @@ selenium==4.19.0
 schedule==1.2.1
 Pillow==10.1.0
 undetected_chromedriver==3.5.4
-onnxruntime==1.18.1
+onnxruntime
 numpy==1.26.2
 # python-dotenv
 # python-dateutil

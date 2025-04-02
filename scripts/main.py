@@ -122,7 +122,7 @@ def logger_init(level: str):
     logger.setLevel(level)
     logging.getLogger("urllib3").setLevel(logging.CRITICAL)
     format = logging.Formatter(
-        "%(asctime)s [%(levelname)s][%(filename)s:%(lineno)d] ---- %(message)s",
+        "%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] ---- %(message)s",
         "%Y-%m-%d %H:%M:%S",
     )
     sh = logging.StreamHandler(stream=sys.stdout)
