@@ -41,11 +41,13 @@ jobs:
           [ "$VERSION" == "master" ] && VERSION=latest
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
+
           # Build and Publish container image
           docker buildx build --push \
           --tag $IMAGE_ID:$VERSION \
           --platform linux/amd64,linux/arm64 .
+
           # Build and simple image
-          docker buildx build --push -f Dockerfile.single\
+          docker buildx build --push -f Dockerfile.simple \
           --tag $IMAGE_ID:simple-$VERSION \
           --platform linux/amd64,linux/arm64 .
