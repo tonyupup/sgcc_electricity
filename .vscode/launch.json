@@ -5,13 +5,19 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python 调试程序: 当前文件",
             "type": "debugpy",
+            "name": "Python 调试程序: 当前文件",
             "request": "launch",
             // "program": "${file}",
             "program": "main.py",
             "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}\\scripts"
+            "cwd": "${workspaceFolder}/scripts",
+            "envFile": "${workspaceFolder}/example.env",
+            "env": {
+                "DEBUG_MODE": "true",
+                "PYTHON_IN_DOCKER": "1",
+                "REMOTE_DRIVER": "http://127.0.0.1:4444",
+            }
         }
     ]
 }
