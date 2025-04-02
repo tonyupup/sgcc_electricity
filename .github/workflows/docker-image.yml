@@ -7,17 +7,10 @@ on:
         description: 'version of this branch'
         required: true
         type: string
-    paths:
-      - 'scripts/**'
-      - 'Dockerfile'
-      - 'requirements.txt'
-      - 'example.env'
-      - '.github/workflows/docker-image.yml'
 
 jobs:
   ghr_push:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     permissions:
       contents: read
       packages: write
