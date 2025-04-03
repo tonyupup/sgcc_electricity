@@ -18,6 +18,7 @@ from selenium.webdriver.support.wait import WebDriverWait
 from sensor_updator import SensorUpdator
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.types import WaitExcTypes
+from selenium.common import exceptions as sel_ex
 
 from const import *
 
@@ -125,12 +126,16 @@ class DataFetcher:
         button_search_type,
         button_search_key,
         timeout=None,
+        ignore_timeout=False,
         ignored_exceptions: typing.Optional[WaitExcTypes] | None = None,
     ):
         """wrapped click function, click only when the element is visible"""
 
         if not timeout:
             timeout = self.DRIVER_IMPLICITY_WAIT_TIME
+        if ignore_timeout:
+            ignored_exceptions = list(ignored_exceptions)
+            ignored_exceptions.append(sel_ex.TimeoutException)
         click_element = WebDriverWait(
             self.__driver,
             timeout=timeout,
@@ -145,11 +150,15 @@ class DataFetcher:
         button_search_type,
         button_search_key,
         timeout=None,
+        ignore_timeout=False,
         ignored_exceptions: typing.Optional[WaitExcTypes] | None = None,
     ):
         """wrapped click function, click only when the elements is visible"""
         if not timeout:
             timeout = self.DRIVER_IMPLICITY_WAIT_TIME
+        if ignore_timeout:
+            ignored_exceptions = list(ignored_exceptions)
+            ignored_exceptions.append(sel_ex.TimeoutException)
         click_element = WebDriverWait(
             self.__driver,
             timeout=timeout,
@@ -184,14 +193,14 @@ class DataFetcher:
         slider = self.__driver.find_element(
             By.CLASS_NAME, "slide-verify-slider-mask-item"
         )
-        ActionChains(self.__driver).click_and_hold(slider).perform()
+        ActionChains(self.__driver, 500).click_and_hold(slider).perform()
         # 获取轨迹
         # tracks = _get_tracks(distance)
         # for t in tracks:
         yoffset_random = random.uniform(-2, 4)
-        ActionChains(self.__driver).move_by_offset(
+        ActionChains(self.__driver, 500).move_by_offset(
             xoffset=distance, yoffset=yoffset_random
-        ).perform()
+        ).release().perform()
 
     def connect_user_db(self, user_id):
         """创建数据库集合，db_name = electricity_daily_usage_{user_id}
@@ -252,7 +261,8 @@ class DataFetcher:
         chrome_options = Options()
         chrome_options.add_argument("--incognito")
         chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--headless")
+        if os.getenv("WEBDRIVER_HEADLESS"):
+            chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--disable-dev-shm-usage")
@@ -269,14 +279,14 @@ class DataFetcher:
         self.__driver.implicitly_wait(self.DRIVER_IMPLICITY_WAIT_TIME)
         self.__driver.maximize_window()
 
-    def _login(self, phone_code=False):
-        def scan_qr_code():
+    def _login(self, phone_code=False, scan_qr_code=False):
+        def scan_qr_code_logic():
             cond = (
                 By.XPATH,
                 "//div[@class='login_ewm']/div[@class='sweepCodePic']/img",
             )
 
-            def wait_for_element(driver):
+            def wait_for_element(_):
                 try:
                     elem = self.__driver.find_element(*cond)
                     if "data:image/png;base64" in elem.get_attribute("src"):
@@ -285,14 +295,19 @@ class DataFetcher:
                     return False
 
             qr_code_elem = WebDriverWait(self.__driver, 5).until(wait_for_element)
-
             ActionChains(self.__driver).move_to_element(qr_code_elem).perform()
-            return WebDriverWait(self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
-                EC.url_to_be("https://www.95598.cn/osgweb/my95598")
+            logging.info("please scan the QR code.")
+            # wait for login success
+            return WebDriverWait(self.__driver, 20).until(
+                EC.url_to_be("https://www.95598.cn/osgweb/my95598"),
+                "waiting for scan qrcode login failed, not redirect to target page",
             )
 
         self.__driver.get(LOGIN_URL)
         logging.info(f"Open LOGIN_URL:{LOGIN_URL}.")
+        if scan_qr_code:
+            return scan_qr_code_logic()
+
         # swtich to username-password login page
         self._click_button(By.CLASS_NAME, "user")
         logging.info("find_element 'user'.")
@@ -303,6 +318,9 @@ class DataFetcher:
             '//*[@id="login_box"]/div[2]/div[1]/form/div[1]/div[3]/div/span[2]',
         )
         logging.info("Click the Agree option.")
+
+        # phone code
+        """
         if phone_code:
             self._click_button(
                 By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[3]/span'
@@ -324,49 +342,50 @@ class DataFetcher:
             )
             logging.info("Click login button.")
             return True
-        else:
-            # input username and password
-            input_elements = self._visible_elems(By.CLASS_NAME, "el-input__inner")
-            input_elements[0].send_keys(self._username)
-            logging.info(f"input_elements username : {self._username}")
-            input_elements[1].send_keys(self._password)
-            logging.info(f"input_elements password : {self._password}")
-            self._click_button(By.CLASS_NAME, "el-button.el-button--primary")
-            logging.info("Click login button.")
-            # sometimes ddddOCR may fail, so add retry logic)
-            for retry_times in range(1, self.RETRY_TIMES_LIMIT + 1):
-                im_info_elem = self._visible_elem(By.ID, "slideVerify")
-                background_image = base64_to_PLI(im_info_elem.screenshot_as_base64)
-                logging.info(f"Get electricity canvas image successfully.")
-                distance = self.onnx.get_distance(background_image)
-                logging.info(f"Image CaptCHA distance is {distance}.")
-                if distance <= 0:
-                    logging.error(
-                        f"Image CaptCHA distance is {distance}, please check the image."
-                    )
-                    self._click_button(By.CLASS_NAME, "el-button.el-button--primary")
-                    time.sleep(2)
-                    continue
+        """
 
-                self._sliding_track(round(distance * 1.06))  # 1.06是补偿
-                # wait for login success
-                if WebDriverWait(self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
-                    EC.url_to_be("https://www.95598.cn/osgweb/my95598")
-                ):
-                    logging.info(f"Sliding CAPTCHA recognition success, login success.")
-                    return True
-                else:
-                    logging.warning(
-                        f"wait login success jump failed, retry times: {retry_times}"
-                    )
-                    err_msg = self._visible_elem(
-                        By.XPATH, "//div[@class='errmsg-tip']", 10
-                    )
-                    if err_msg:
-                        err_msg = err_msg.text
-                        logging.error(f"Sliding CAPTCHA recognition failed, {err_msg}")
-                        return False
-                    continue
+        # input username and password
+        input_elements = self._visible_elems(By.CLASS_NAME, "el-input__inner")
+        input_elements[0].send_keys(self._username)
+        logging.info(f"input_elements username : {self._username}")
+        input_elements[1].send_keys(self._password)
+        logging.info(f"input_elements password : {self._password}")
+        self._click_button(By.CLASS_NAME, "el-button.el-button--primary")
+        logging.info("Click login button.")
+        # sometimes ddddOCR may fail, so add retry logic)
+        for retry_times in range(1, self.RETRY_TIMES_LIMIT + 1):
+            im_info_elem = self._visible_elem(By.ID, "slideVerify")
+            background_image = base64_to_PLI(im_info_elem.screenshot_as_base64)
+            logging.info(f"Get electricity canvas image successfully.")
+            distance = self.onnx.get_distance(background_image)
+            logging.info(f"Image CaptCHA distance is {distance}.")
+            if distance <= 0:
+                logging.error(
+                    f"Image CaptCHA distance is {distance}, please check the image."
+                )
+                self._click_button(
+                    By.XPATH, "//div[@class='slide-verify-refresh-icon']"
+                )
+                time.sleep(2)
+                continue
+
+            self._sliding_track(round(distance * 1.06))  # 1.06是补偿
+            # wait for login success
+            if WebDriverWait(self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
+                EC.url_to_be("https://www.95598.cn/osgweb/my95598")
+            ):
+                logging.info(f"Sliding CAPTCHA recognition success, login success.")
+                return True
+            else:
+                logging.warning(
+                    f"wait login success jump failed, retry times: {retry_times}"
+                )
+                err_msg = self._visible_elem(By.XPATH, "//div[@class='errmsg-tip']", 10)
+                if err_msg:
+                    err_msg = err_msg.text
+                    logging.error(f"Sliding CAPTCHA recognition failed, {err_msg}")
+                    return False
+                continue
         logging.error(
             f"Login failed, maybe caused by Sliding CAPTCHA recognition failed"
         )
@@ -390,7 +409,10 @@ class DataFetcher:
         logging.info("Webdriver initialized.")
         updator = SensorUpdator()
 
-        if self._login(phone_code=os.getenv("DEBUG_MODE", "false").lower() == "true"):
+        if self._login(
+            phone_code=bool(os.getenv("DEBUG_MODE")),
+            scan_qr_code=bool(os.getenv("SCAN_QR_CODE")),
+        ):
             logging.info("login successed !")
         else:
             logging.info("login unsuccessed !")
@@ -597,7 +619,6 @@ class DataFetcher:
             logging.error(
                 f"Webdriver quit abnormly, reason: {e}. get user_id list failed."
             )
-            self.__driver.quit()
 
     def _get_electric_balance(self):
         try:
@@ -625,7 +646,7 @@ class DataFetcher:
             # wait for data displayed
             self._visible_elem(By.CLASS_NAME, "total", 3)
         except Exception as e:
-            logging.error(f"The yearly data get failed : {e}")
+            logging.error("The yearly data get failed %s", e)
             return None, None
 
         # get data
@@ -634,7 +655,7 @@ class DataFetcher:
                 By.XPATH, "//ul[@class='total']/li[1]/span"
             ).text
         except Exception as e:
-            logging.error(f"The yearly_usage data get failed : {e}")
+            logging.error("The yearly_usage data get failed : %s", e)
             yearly_usage = None
 
         try:
@@ -642,7 +663,7 @@ class DataFetcher:
                 By.XPATH, "//ul[@class='total']/li[2]/span"
             ).text
         except Exception as e:
-            logging.error(f"The yearly_charge data get failed : {e}")
+            logging.error("The yearly_charge data get failed : %s", e)
             yearly_charge = None
 
         return yearly_usage, yearly_charge
@@ -681,7 +702,10 @@ class DataFetcher:
                 )
                 span_element.click()
             # wait for month displayed
-            self._visible_elem(By.CLASS_NAME, "total")
+            self._visible_elem(
+                By.CLASS_NAME,
+                "total",
+            )
             month_element = self._visible_elem(
                 By.XPATH,
                 "//*[@id='pane-first']/div[1]/div[2]/div[2]/div/div[3]/table/tbody",
@@ -699,7 +723,7 @@ class DataFetcher:
                 charge.append(month_element[i][2])
             return month, usage, charge
         except Exception as e:
-            logging.error(f"The month data get failed : {e}")
+            logging.error(f"The month data get failed : {e.args}")
             return None, None, None
 
     # 增加获取每日用电量的函数
@@ -796,22 +820,23 @@ class DataFetcher:
                         f"The electricity consumption of {date[index]} failed to save to the database, which may already exist: {str(e)}"
                     )
 
-            for index in range(len(month)):
-                try:
-                    dic = {
-                        "name": f"{month[index]}usage",
-                        "value": f"{month_usage[index]}",
-                    }
-                    self.insert_expand_data(dic)
-                    dic = {
-                        "name": f"{month[index]}charge",
-                        "value": f"{month_charge[index]}",
-                    }
-                    self.insert_expand_data(dic)
-                except Exception as e:
-                    logging.debug(
-                        f"The electricity consumption of {month[index]} failed to save to the database, which may already exist: {str(e)}"
-                    )
+            if month:
+                for index in range(len(month)):
+                    try:
+                        dic = {
+                            "name": f"{month[index]}usage",
+                            "value": f"{month_usage[index]}",
+                        }
+                        self.insert_expand_data(dic)
+                        dic = {
+                            "name": f"{month[index]}charge",
+                            "value": f"{month_charge[index]}",
+                        }
+                        self.insert_expand_data(dic)
+                    except Exception as e:
+                        logging.debug(
+                            f"The electricity consumption of {month[index]} failed to save to the database, which may already exist: {str(e)}"
+                        )
             if month_charge:
                 month_charge = month_charge[-1]
             else:
@@ -834,10 +859,3 @@ class DataFetcher:
                 "The database creation failed and the data was not written correctly."
             )
             return
-
-
-if __name__ == "__main__":
-    with open("bg.jpg", "rb") as f:
-        test1 = f.read()
-        print(type(test1))
-        print(test1)
