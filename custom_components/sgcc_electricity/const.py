@@ -1,0 +1,1 @@
+DOMAIN = "sgcc_electricity"

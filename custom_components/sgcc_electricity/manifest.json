@@ -1,0 +1,13 @@
+{
+    "domain": "sgcc_electricity",
+    "name": "SGCC Electricity",
+    "version": "1.0.0",
+    "documentation": "https://github.com/tonyupup/sgcc_electricity",
+    "requirements": [
+      "undetected-chromedriver",
+      "pillow",
+      "numpy"
+    ],
+    "dependencies": [],
+    "codeowners": ["@tonyupup"]
+  }
