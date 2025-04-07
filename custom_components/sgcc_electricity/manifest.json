@@ -1,13 +1,21 @@
 {
-    "domain": "sgcc_electricity",
-    "name": "SGCC Electricity",
-    "version": "1.0.0",
-    "documentation": "https://github.com/tonyupup/sgcc_electricity",
-    "requirements": [
-      "undetected-chromedriver",
-      "pillow",
-      "numpy"
-    ],
-    "dependencies": [],
-    "codeowners": ["@tonyupup"]
-  }
+  "domain": "sgcc_electricity",
+  "name": "SGCC Electricity",
+  "version": "1.0.0",
+  "documentation": "https://github.com/tonyupup/sgcc_electricity",
+  "requirements": [
+    "requests==2.31.0",
+    "selenium==4.19.0",
+    "schedule==1.2.1",
+    "Pillow==10.1.0",
+    "undetected_chromedriver==3.5.4",
+    "onnxruntime",
+    "numpy==1.26.2"
+  ],
+  "codeowners": [
+    "@tonyupup"
+  ],
+  "single_config_entry": false,
+  "iot_class": "cloud_polling",
+  "config_flow": true
+}
