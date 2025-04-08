@@ -11,7 +11,7 @@ CLASSES=["target"]
 
 class ONNX:
     def __init__(self,onnx_file_name="captcha.onnx"):
-        self.onnx_session = onnxruntime.InferenceSession(onnx_file_name) 
+        self.onnx_session = onnxruntime.InferenceSession(onnx_file_name)
 
     # sigmoid函数
     def sigmoid(self,x):
@@ -105,7 +105,7 @@ class ONNX:
             # font = ImageFont.truetype(font='PingFang.ttc', size=40)
             draw.text(xy=(top, left),text='{0} {1:.2f}'.format(CLASSES[cl], score), fill=(255, 0, 0))
 
-            # image = cv2.putText(image, '{0} {1:.2f}'.format(CLASSES[cl], score), 
+            # image = cv2.putText(image, '{0} {1:.2f}'.format(CLASSES[cl], score),
             #             (top, left),
             #             cv2.FONT_HERSHEY_SIMPLEX,
             #             0.6, (0, 0, 255), 2)
@@ -209,15 +209,14 @@ class ONNX:
         img /= 255.0
         img = np.expand_dims(img, axis=0) # [3, 640, 640]扩展为[1, 3, 640, 640]
 
-        inputs = {self.onnx_session.get_inputs()[0].name: img} 
-        prediction = self.onnx_session.run(None, inputs)[0] 
+        inputs = {self.onnx_session.get_inputs()[0].name: img}
+        prediction = self.onnx_session.run(None, inputs)[0]
         return prediction, org_img
 
     def get_distance(self,image,draw=False):
         prediction, org_img = self._inference(image)
         boxes = self.get_boxes(prediction=prediction)
         if len(boxes) == 0:
-            print('No gaps were detected.')
             return 0
         else:
             if draw:

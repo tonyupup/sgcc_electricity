@@ -4,13 +4,11 @@
   "version": "1.0.0",
   "documentation": "https://github.com/tonyupup/sgcc_electricity",
   "requirements": [
-    "requests==2.31.0",
+    "requests",
     "selenium==4.19.0",
-    "schedule==1.2.1",
-    "Pillow==10.1.0",
-    "undetected_chromedriver==3.5.4",
+    "Pillow",
     "onnxruntime",
-    "numpy==1.26.2"
+    "numpy"
   ],
   "codeowners": [
     "@tonyupup"
