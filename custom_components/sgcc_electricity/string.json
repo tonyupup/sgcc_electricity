@@ -1,0 +1,33 @@
+{
+    "title": "SGCC Electricity",
+    "config": {
+        "step": {
+            "user": {
+                "title": "Configure SGCC Electricity",
+                "description": "Set up your SGCC Electricity account to monitor your electricity usage.",
+                "data": {
+                    "sgcc_username": "Username",
+                    "sgcc_password": "Password",
+                    "sgcc_userid": "User ID (optional)",
+                    "remote_webdriver": "Remote WebDriver URL",
+                    "headless_mode": "Enable Headless Mode"
+                }
+            }
+        },
+        "error": {
+            "invalid_auth": "Invalid authentication",
+            "connection_error": "Unable to connect to SGCC service"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "SGCC Options",
+                "description": "Adjust settings for your SGCC integration.",
+                "data": {
+                    "polling_interval": "Polling Interval (seconds)"
+                }
+            }
+        }
+    }
+}

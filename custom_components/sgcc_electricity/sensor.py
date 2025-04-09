@@ -3,28 +3,36 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import timedelta
+from datetime import datetime
 
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
-    SensorDeviceClass,
     SensorStateClass,
 )
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import generate_entity_id
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
 )
 
-from collections.abc import Callable
-
-from .const import DOMAIN, SGCC_USERID
+from .const import (
+    DOMAIN,
+    SGCC_USERID,
+    SGCC_USERNAME,
+    SGCC_PASSWORD,
+    REMOTE_WEBDRIVER,
+    HEADLESS_MODE,
+    SCAN_QR_CODE,
+)
 
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.setLevel(logging.WARNING)
 
 
 class SGCCDataUpdateCoordinator(DataUpdateCoordinator):
@@ -50,11 +58,8 @@ class SGCCDataUpdateCoordinator(DataUpdateCoordinator):
         )
         self.data = None
 
-    async def _async_setup(self):
-        await self._async_update_data()
-
     @staticmethod
-    def fetch_by_selenium():
+    def fetch_by_selenium(data: dict) -> dict:
         """Fetch data using Selenium.
 
         Returns
@@ -67,16 +72,17 @@ class SGCCDataUpdateCoordinator(DataUpdateCoordinator):
 
         with DataFetcher(
             _LOGGER,
-            "17729431563",
-            "Sgcc.123654",
+            data.get(SGCC_USERNAME),
+            data.get(SGCC_PASSWORD),
             {
-                "SCAN_QR_CODE": True,
-                "REMOTE_DRIVER": "https://ha_cf.zltop.cn",
+                "SCAN_QR_CODE": data.get(SCAN_QR_CODE, False),
+                "REMOTE_DRIVER": data.get(REMOTE_WEBDRIVER),
+                "HEADLESS_MODE": data.get(HEADLESS_MODE, True),
             },
         ) as fetch:
             results = fetch.fetch()
             if not results:
-                return {}
+                return None
             return {
                 result[0]: {
                     "balance": result[1],
@@ -96,6 +102,7 @@ class SGCCDataUpdateCoordinator(DataUpdateCoordinator):
             return self.data
         self.data = await self.hass.async_add_executor_job(
             self.fetch_by_selenium,
+            self.config_entry.data,
         )
         return self.data
 
@@ -119,6 +126,16 @@ class SGCCSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = self.entity_id = generate_entity_id(
             "sensor.{}", f"{user_id}_{self.entity_description.name}", hass=hass
         )
+        self._attr_device_info = DeviceInfo(
+            entry_type=DeviceEntryType.SERVICE,
+            identifiers={(DOMAIN, user_id)},
+            manufacturer="SGCC",
+            model="SGCC",
+            name="SGCC",
+            sw_version="0.1",
+            configuration_url="https://www.sgcc.com.cn/",
+            suggested_area="SGCC",
+        )
 
         self._updater = updater
 
@@ -134,7 +151,6 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
     """Set up SGCC sensor from a config entry."""
-    from datetime import datetime
 
     def update_lastday_elec_sensor(sensor: SGCCSensor, data: dict):
         setattr(
@@ -150,106 +166,97 @@ async def async_setup_entry(
 
         return update_native_value
 
-    async def init():
-        updater_coordinator = SGCCDataUpdateCoordinator(hass, entry)
-        # 检查配置条目状态是否为 SETUP_IN_PROGRESS
+    updater_coordinator = SGCCDataUpdateCoordinator(hass, entry)
+    await updater_coordinator.async_config_entry_first_refresh()
 
-        if entry.state == ConfigEntryState.SETUP_IN_PROGRESS:
-            await updater_coordinator.async_config_entry_first_refresh()
-        else:
-            # 如果状态不符合要求，可以手动调用刷新逻辑
-            await updater_coordinator.async_refresh()
-
-        async_add_entities(
-            [
-                SGCCSensor(
-                    coordinator=updater_coordinator,
-                    hass=hass,
-                    user_id=user_id,
-                    entity_description=entity_description,
-                    updater=updater,
-                )
-                for entity_description, updater in [
-                    (
-                        SensorEntityDescription(
-                            key="sgcc_current_balance",
-                            name="Current Balance",
-                            icon="mdi:currency-cny",
-                            unit_of_measurement="CNY",
-                            state_class=SensorStateClass.TOTAL,
-                            device_class=SensorDeviceClass.MONETARY,
-                            native_unit_of_measurement="CNY",
-                        ),
-                        update_native_value_wrap("balance"),
+    async_add_entities(
+        [
+            SGCCSensor(
+                coordinator=updater_coordinator,
+                hass=hass,
+                user_id=user_id,
+                entity_description=entity_description,
+                updater=updater,
+            )
+            for entity_description, updater in [
+                (
+                    SensorEntityDescription(
+                        key="sgcc_current_balance",
+                        name="Current Balance",
+                        icon="mdi:currency-cny",
+                        unit_of_measurement="CNY",
+                        state_class=SensorStateClass.TOTAL,
+                        device_class=SensorDeviceClass.MONETARY,
+                        native_unit_of_measurement="CNY",
                     ),
-                    (
-                        SensorEntityDescription(
-                            key="sgcc_lastday_energy",
-                            name="Last Day Energy",
-                            icon="mdi:flash",
-                            state_class=SensorStateClass.TOTAL,
-                            device_class=SensorDeviceClass.ENERGY,
-                            unit_of_measurement="kWh",
-                            native_unit_of_measurement="kWh",
-                        ),
-                        update_lastday_elec_sensor,
+                    update_native_value_wrap("balance"),
+                ),
+                (
+                    SensorEntityDescription(
+                        key="sgcc_lastday_energy",
+                        name="Last Day Energy",
+                        icon="mdi:flash",
+                        state_class=SensorStateClass.TOTAL,
+                        device_class=SensorDeviceClass.ENERGY,
+                        unit_of_measurement="kWh",
+                        native_unit_of_measurement="kWh",
                     ),
-                    (
-                        SensorEntityDescription(
-                            key="sgcc_yearly_energy",
-                            name="Yearly Energy",
-                            icon="mdi:flash",
-                            state_class=SensorStateClass.TOTAL,
-                            device_class=SensorDeviceClass.ENERGY,
-                            unit_of_measurement="kWh",
-                            native_unit_of_measurement="kWh",
-                        ),
-                        update_native_value_wrap("yearly_usage"),
+                    update_lastday_elec_sensor,
+                ),
+                (
+                    SensorEntityDescription(
+                        key="sgcc_yearly_energy",
+                        name="Yearly Energy",
+                        icon="mdi:flash",
+                        state_class=SensorStateClass.TOTAL,
+                        device_class=SensorDeviceClass.ENERGY,
+                        unit_of_measurement="kWh",
+                        native_unit_of_measurement="kWh",
                     ),
-                    (
-                        SensorEntityDescription(
-                            key="sgcc_monthly_energy",
-                            name="Monthly Energy",
-                            icon="mdi:flash",
-                            state_class=SensorStateClass.TOTAL,
-                            device_class=SensorDeviceClass.ENERGY,
-                            unit_of_measurement="kWh",
-                            native_unit_of_measurement="kWh",
-                        ),
-                        update_native_value_wrap("month_usage"),
+                    update_native_value_wrap("yearly_usage"),
+                ),
+                (
+                    SensorEntityDescription(
+                        key="sgcc_monthly_energy",
+                        name="Monthly Energy",
+                        icon="mdi:flash",
+                        state_class=SensorStateClass.TOTAL,
+                        device_class=SensorDeviceClass.ENERGY,
+                        unit_of_measurement="kWh",
+                        native_unit_of_measurement="kWh",
                     ),
-                    (
-                        SensorEntityDescription(
-                            key="sgcc_yearly_charge",
-                            name="Yearly Charge",
-                            icon="mdi:currency-cny",
-                            state_class=SensorStateClass.TOTAL,
-                            device_class=SensorDeviceClass.MONETARY,
-                            unit_of_measurement="CNY",
-                            native_unit_of_measurement="CNY",
-                        ),
-                        update_native_value_wrap("yearly_charge"),
+                    update_native_value_wrap("month_usage"),
+                ),
+                (
+                    SensorEntityDescription(
+                        key="sgcc_yearly_charge",
+                        name="Yearly Charge",
+                        icon="mdi:currency-cny",
+                        state_class=SensorStateClass.TOTAL,
+                        device_class=SensorDeviceClass.MONETARY,
+                        unit_of_measurement="CNY",
+                        native_unit_of_measurement="CNY",
                     ),
-                    (
-                        SensorEntityDescription(
-                            key="sgcc_monthly_charge",
-                            name="Monthly Charge",
-                            icon="mdi:currency-cny",
-                            state_class=SensorStateClass.TOTAL,
-                            device_class=SensorDeviceClass.MONETARY,
-                            unit_of_measurement="CNY",
-                            native_unit_of_measurement="CNY",
-                        ),
-                        update_native_value_wrap("month_charge"),
+                    update_native_value_wrap("yearly_charge"),
+                ),
+                (
+                    SensorEntityDescription(
+                        key="sgcc_monthly_charge",
+                        name="Monthly Charge",
+                        icon="mdi:currency-cny",
+                        state_class=SensorStateClass.TOTAL,
+                        device_class=SensorDeviceClass.MONETARY,
+                        unit_of_measurement="CNY",
+                        native_unit_of_measurement="CNY",
                     ),
-                ]
-                for user_id in updater_coordinator.data
-                if entry.data.get(SGCC_USERID) is None
-                or user_id in entry.data.get(SGCC_USERID, [])
+                    update_native_value_wrap("month_charge"),
+                ),
             ]
-        )
-
-    hass.add_job(init)
+            for user_id in updater_coordinator.data
+            if entry.data.get(SGCC_USERID) is None
+            or user_id in entry.data.get(SGCC_USERID, [])
+        ]
+    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):

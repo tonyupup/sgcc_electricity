@@ -1,6 +1,6 @@
 import re
 import time
-from os import path
+from pathlib import Path
 import random
 import logging
 import base64
@@ -28,8 +28,7 @@ def base64_to_PLI(base64_str: str):
     base64_data = re.sub("^data:image/.+;base64,", "", base64_str)
     byte_data = base64.b64decode(base64_data)
     image_data = BytesIO(byte_data)
-    img = Image.open(image_data)
-    return img
+    return Image.open(image_data)
 
 
 class DataFetcher:
@@ -38,9 +37,9 @@ class DataFetcher:
     ):
         self._username = username
         self._password = password
-        current_dir = path.dirname(__file__)
+        current_dir = Path(__file__).parent
         # 构建目标文件的完整路径
-        target_path = path.join(current_dir, "captcha.onnx")
+        target_path = current_dir / "captcha.onnx"
 
         self._onnx = ONNX(target_path)
         self._driver: WebDriver = None
@@ -55,13 +54,11 @@ class DataFetcher:
         self.RETRY_WAIT_TIME_OFFSET_UNIT = int(
             self._config.get("RETRY_WAIT_TIME_OFFSET_UNIT", 10)
         )
-        self.IGNORE_USER_ID = self._config.get("IGNORE_USER_ID", "xxxxx,xxxxx").split(
-            ","
-        )
+        self.IGNORE_USER_ID = self._config.get("IGNORE_USER_ID", "").split(",")
 
     # @staticmethod
     def _click_button(self, button_search_type, button_search_key, timeout=None):
-        """wrapped click function, click only when the element is clickable"""
+        """Wrap the click function and click only when the element is clickable."""
         if not timeout:
             timeout = self.DRIVER_IMPLICITY_WAIT_TIME
         click_element = WebDriverWait(
@@ -75,23 +72,22 @@ class DataFetcher:
         button_search_key,
         timeout=None,
         ignore_timeout=False,
-        ignored_exceptions: typing.Optional[WaitExcTypes] | None = None,
+        ignored_exceptions: WaitExcTypes | None = None,
     ):
-        """Wrapped click function, click only when the element is visible"""
+        """Wrap the click function and ensure the element is visible."""
 
         if not timeout:
             timeout = self.DRIVER_IMPLICITY_WAIT_TIME
         if ignore_timeout:
             ignored_exceptions = list(ignored_exceptions)
             ignored_exceptions.append(sel_ex.TimeoutException)
-        elem = WebDriverWait(
+        return WebDriverWait(
             self._driver,
             timeout=timeout,
             ignored_exceptions=ignored_exceptions,
         ).until(
             EC.visibility_of_element_located((button_search_type, button_search_key))
         )
-        return elem
 
     def _visible_elems(
         self,
@@ -99,15 +95,15 @@ class DataFetcher:
         button_search_key,
         timeout=None,
         ignore_timeout=False,
-        ignored_exceptions: typing.Optional[WaitExcTypes] | None = None,
+        ignored_exceptions: WaitExcTypes | None = None,
     ):
-        """wrapped click function, click only when the elements is visible"""
+        """wrapped click function, click only when the elements is visible."""
         if not timeout:
             timeout = self.DRIVER_IMPLICITY_WAIT_TIME
         if ignore_timeout:
             ignored_exceptions = list(ignored_exceptions)
             ignored_exceptions.append(sel_ex.TimeoutException)
-        elems = WebDriverWait(
+        return WebDriverWait(
             self._driver,
             timeout=timeout,
             ignored_exceptions=ignored_exceptions,
@@ -116,7 +112,6 @@ class DataFetcher:
                 (button_search_type, button_search_key)
             )
         )
-        return elems
 
     # @staticmethod
     def _is_captcha_legal(self, captcha):
@@ -152,15 +147,25 @@ class DataFetcher:
         chrome_options.add_argument("--disable-extensions")
 
         remote_driver = self._config.get("REMOTE_DRIVER")
-        if remote_driver:
-            self._driver: WebDriver = WebDriver(remote_driver, options=chrome_options)
-        else:
-            self._driver = Chrome(
-                options=chrome_options,
-                service=ChromeService("/usr/bin/chromedriver"),
+        try:
+            if remote_driver:
+                self._driver: WebDriver = WebDriver(
+                    remote_driver, options=chrome_options
+                )
+            else:
+                self._driver = Chrome(
+                    options=chrome_options,
+                    service=ChromeService("/usr/bin/chromedriver"),
+                )
+        except (sel_ex.WebDriverException, FileNotFoundError) as e:
+            self._logger.error(
+                "Webdriver init failed, reason: %s. Please check the chromedriver path or remote driver url.",
+                e,
             )
+            return False
         self._driver.implicitly_wait(self.DRIVER_IMPLICITY_WAIT_TIME)
         self._driver.maximize_window()
+        return True
 
     def _login(self, phone_code=False, scan_qr_code=False):
         def scan_qr_code_logic():
@@ -174,70 +179,49 @@ class DataFetcher:
                     elem = self._driver.find_element(*cond)
                     if "data:image/png;base64" in elem.get_attribute("src"):
                         return elem
-                except Exception:
+                except sel_ex.NoSuchElementException:
                     return False
 
             qr_code_elem = WebDriverWait(self._driver, 5).until(wait_for_element)
             ActionChains(self._driver).move_to_element(qr_code_elem).perform()
-            self._logger.info("please scan the QR code.")
+            self._logger.debug("Please scan the QR code within 30 seconds.")
             # wait for login success
-            return WebDriverWait(self._driver, 20).until(
+            return WebDriverWait(self._driver, 30).until(
                 EC.url_to_be("https://www.95598.cn/osgweb/my95598"),
-                "waiting for scan qrcode login failed, not redirect to target page",
+                "Waiting for scanning qrcode login failed to redirect to target page",
             )
 
         self._driver.get(LOGIN_URL)
-        self._logger.info("Open LOGIN_URL: %s", LOGIN_URL)
+        self._logger.debug("Open LOGIN_URL: %s", LOGIN_URL)
         if scan_qr_code:
             return scan_qr_code_logic()
 
         # swtich to username-password login page
         self._click_button(By.CLASS_NAME, "user")
-        self._logger.info("find_element 'user'.")
+        self._logger.debug("find_element 'user'.")
         self._click_button(By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[2]/span')
         # click agree button
         self._click_button(
             By.XPATH,
             '//*[@id="login_box"]/div[2]/div[1]/form/div[1]/div[3]/div/span[2]',
         )
-        self._logger.info("Click the Agree option.")
-        # if phone_code:
-        #    self._click_button(
-        #        By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[3]/span'
-        #    )
-        #    input_elements = self._visible_elems(By.CLASS_NAME, "el-input__inner")
-        #    input_elements[2].send_keys(self._username)
-        #    self._logger.info(f"input_elements username : {self._username}")
-        #    self._click_button(
-        #        By.XPATH,
-        #        '//*[@id="login_box"]/div[2]/div[2]/form/div[1]/div[2]/div[2]/div/a',
-        #    )
-        #    code = input("Input your phone verification code: ")
-        #    input_elements[3].send_keys(code)
-        #    self._logger.info(f"input_elements verification code: {code}.")
-        #    # click login button
-        #    self._click_button(
-        #        By.XPATH,
-        #        '//*[@id="login_box"]/div[2]/div[2]/form/div[2]/div/button/span',
-        #    )
-        #    self._logger.info("Click login button.")
-        #    return True
+        self._logger.debug("Click the Agree option.")
 
         # input username and password
         input_elements = self._visible_elems(By.CLASS_NAME, "el-input__inner")
         input_elements[0].send_keys(self._username)
-        self._logger.info("input_elements username: %s", self._username)
+        self._logger.debug("input_elements username: %s", self._username)
         input_elements[1].send_keys(self._password)
-        self._logger.info("input_elements password")
+        self._logger.debug("input_elements password")
         self._click_button(By.CLASS_NAME, "el-button.el-button--primary")
-        self._logger.info("Click login button.")
+        self._logger.debug("Click login button.")
         # sometimes ddddOCR may fail, so add retry logic)
         for retry_times in range(1, self.RETRY_TIMES_LIMIT + 1):
             im_info_elem = self._visible_elem(By.ID, "slideVerify")
             background_image = base64_to_PLI(im_info_elem.screenshot_as_base64)
-            self._logger.info("Get electricity canvas image successfully.")
+            self._logger.debug("Get electricity canvas image successfully.")
             distance = self._onnx.get_distance(background_image)
-            self._logger.info("Image CaptCHA distance is %s.", distance)
+            self._logger.debug("Image CaptCHA distance is %s.", distance)
             if distance <= 0:
                 self._logger.error(
                     "Image CaptCHA distance is %s, please check the image.", distance
@@ -253,7 +237,9 @@ class DataFetcher:
             if WebDriverWait(self._driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
                 EC.url_to_be("https://www.95598.cn/osgweb/my95598")
             ):
-                self._logger.info("Sliding CAPTCHA recognition success, login success.")
+                self._logger.debug(
+                    "Sliding CAPTCHA recognition success, login success."
+                )
                 return True
 
             self._logger.warning(
@@ -269,27 +255,34 @@ class DataFetcher:
         return False
 
     def __enter__(self):
-        self._init_webdriver()
+        """Initialize the WebDriver and return the instance."""
+        if not self._init_webdriver():
+            raise RuntimeError(
+                "Failed to initialize WebDriver. Please check the configuration."
+            )
+        self._logger.debug("Webdriver initialized.")
+
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._driver.quit()
+        """Clean up resources by quitting the WebDriver."""
+        if self._driver:
+            self._driver.quit()
 
     def fetch(self):
-        """main logic here"""
-        self._logger.info("Webdriver initialized.")
+        """Execute the main logic here."""
 
         if not self._login(
             phone_code=bool(self._config.get("DEBUG_MODE")),
             scan_qr_code=bool(self._config.get("SCAN_QR_CODE")),
         ):
-            self._logger.info("login unsuccessed !")
-            return
+            self._logger.debug("login unsuccessed !")
+            return None
 
-        self._logger.info("login successed !")
-        self._logger.info("Try to get the userid list")
+        self._logger.debug("login successed !")
+        self._logger.debug("Try to get the userid list")
         user_id_list = self._get_user_ids()
-        self._logger.info(
+        self._logger.debug(
             "Here are a total of %d userids, which are %s among which %s will be ignored.",
             len(user_id_list),
             user_id_list,
@@ -302,7 +295,7 @@ class DataFetcher:
                 self._choose_current_userid(userid_index)
                 current_userid = self._get_current_userid()
                 if current_userid in self.IGNORE_USER_ID:
-                    self._logger.info(
+                    self._logger.debug(
                         "The user ID %s will be ignored in user_id_list", current_userid
                     )
                     continue
@@ -329,16 +322,16 @@ class DataFetcher:
                     )
             except (sel_ex.NoSuchElementException, sel_ex.TimeoutException) as e:
                 if userid_index != len(user_id_list):
-                    self._logger.info(
+                    self._logger.debug(
                         "The current user %s data fetching failed %s, the next user data will be fetched.",
                         user_id,
                         e,
                     )
                 else:
-                    self._logger.info(
+                    self._logger.debug(
                         "The user %s data fetching failed, %s", user_id, e
                     )
-                    self._logger.info(
+                    self._logger.debug(
                         "Webdriver quit after fetching data successfully."
                     )
                 continue
@@ -354,7 +347,7 @@ class DataFetcher:
         if elements:
             self._click_button(
                 By.XPATH,
-                f"""//*[@id="app"]/div/div[2]/div/div/div/div[2]/div[2]/div/button""",
+                '//*[@id="app"]/div/div[2]/div/div/div/div[2]/div[2]/div/button',
             )
         self._click_button(By.CLASS_NAME, "el-input__suffix")
         self._click_button(
@@ -364,11 +357,11 @@ class DataFetcher:
     def _get_all_data(self, user_id, userid_index):
         balance = self._get_electric_balance()
         if balance is None:
-            self._logger.info(
+            self._logger.debug(
                 "Get electricity charge balance for %s failed, Pass.", user_id
             )
         else:
-            self._logger.info(
+            self._logger.debug(
                 "Get electricity charge balance for %s successfully, balance is %s CNY.",
                 user_id,
                 balance,
@@ -383,7 +376,7 @@ class DataFetcher:
             self._logger.error("Get year power usage for %s failed, pass", user_id)
         else:
             yearly_usage = float(yearly_usage)
-            self._logger.info(
+            self._logger.debug(
                 "Get year power usage for %s successfully, usage is %s kwh",
                 user_id,
                 yearly_usage,
@@ -392,7 +385,7 @@ class DataFetcher:
             self._logger.error("Get year power charge for %s failed, pass", user_id)
         else:
             yearly_charge = float(yearly_charge)
-            self._logger.info(
+            self._logger.debug(
                 "Get year power charge for %s successfully, yearly charge is %s CNY",
                 user_id,
                 yearly_charge,
@@ -403,13 +396,13 @@ class DataFetcher:
         if month is None:
             self._logger.error("Get month power usage for %s failed, pass", user_id)
         else:
-            for m in range(len(month)):
-                self._logger.info(
+            for index, _ in enumerate(month):
+                self._logger.debug(
                     "Get month power charge for %s successfully, %s usage is %s KWh, charge is %s CNY.",
                     user_id,
-                    month[m],
-                    month_usage[m],
-                    month_charge[m],
+                    month[index],
+                    month_usage[index],
+                    month_charge[index],
                 )
         # get yesterday usage
         last_daily_date, last_daily_usage = self._get_yesterday_usage()
@@ -419,7 +412,7 @@ class DataFetcher:
             )
         else:
             last_daily_usage = float(last_daily_usage)
-            self._logger.info(
+            self._logger.debug(
                 "Get daily power consumption for %s successfully, , %s usage is %s kwh.",
                 user_id,
                 last_daily_date,
@@ -427,32 +420,6 @@ class DataFetcher:
             )
         if month is None:
             self._logger.error("Get month power usage for %s failed, pass", user_id)
-
-        # 新增储存用电量
-        # if self.enable_database_storage:
-        #     # 将数据存储到数据库
-        #     self.__logger.info(
-        #         "enable_database_storage is true, we will store the data to the database."
-        #     )
-        #     # 按天获取数据 7天/30天
-        #     date, usages = self._get_daily_usage_data()
-        #     self._save_user_data(
-        #         user_id,
-        #         balance,
-        #         last_daily_date,
-        #         last_daily_usage,
-        #         date,
-        #         usages,
-        #         month,
-        #         month_usage,
-        #         month_charge,
-        #         yearly_charge,
-        #         yearly_usage,
-        #     )
-        # else:
-        #     self.__logger.info(
-        #         "enable_database_storage is false, we will not store the data to the database."
-        #     )
 
         month_charge = float(month_charge[-1]) if month_charge else None
         month_usage = float(month_usage[-1]) if month_usage else None
@@ -470,10 +437,10 @@ class DataFetcher:
     def _get_user_ids(self):
         try:
             # 刷新网页
-            self._driver.refresh()
-            element = WebDriverWait(
-                self._driver, self.DRIVER_IMPLICITY_WAIT_TIME
-            ).until(EC.presence_of_element_located((By.CLASS_NAME, "el-dropdown")))
+            # self._driver.refresh()
+            WebDriverWait(self._driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "el-dropdown"))
+            )
             # click roll down button for user id
             self._click_button(By.XPATH, "//div[@class='el-dropdown']/span")
             # wait for roll down menu displayed
@@ -497,7 +464,7 @@ class DataFetcher:
             ]
         except Exception as e:
             self._logger.error(
-                f"Webdriver quit abnormly, reason: {e}. get user_id list failed."
+                "Webdriver quit abnormly, reason: %s. get user_id list failed.", e
             )
 
     def _get_electric_balance(self):
@@ -522,7 +489,7 @@ class DataFetcher:
                 )
             # wait for data displayed
             self._visible_elem(By.CLASS_NAME, "total", 3)
-        except Exception as e:
+        except (sel_ex.NoSuchElementException, sel_ex.TimeoutException) as e:
             self._logger.error("The yearly data get failed %s", e)
             return None, None
 
@@ -546,7 +513,7 @@ class DataFetcher:
         return yearly_usage, yearly_charge
 
     def _get_yesterday_usage(self):
-        """获取最近一次用电量"""
+        """获取最近一次用电量."""
         try:
             # 点击日用电量
             self._click_button(
@@ -561,7 +528,7 @@ class DataFetcher:
             last_daily_date = date_elements[0].text  # 获取最近一次用电量的日期
             return last_daily_date, float(date_elements[1].text)
         except Exception as e:
-            self._logger.error(f"The yesterday data get failed : {e}")
+            self._logger.error("The yesterday data get failed : %s", e)
             return None, None
 
     def _get_month_usage(self):
@@ -594,18 +561,18 @@ class DataFetcher:
             month = []
             usage = []
             charge = []
-            for i in range(len(month_element)):
-                month.append(month_element[i][0])
-                usage.append(month_element[i][1])
-                charge.append(month_element[i][2])
+            for index, _ in enumerate(month_element):
+                month.append(month_element[index][0])
+                usage.append(month_element[index][1])
+                charge.append(month_element[index][2])
             return month, usage, charge
         except Exception as e:
-            self._logger.error(f"The month data get failed : {e.args}")
+            self._logger.error("The month data get failed : %s", e)
             return None, None, None
 
     # 增加获取每日用电量的函数
     def _get_daily_usage_data(self):
-        """储存指定天数的用电量"""
+        """储存指定天数的用电量."""
         retention_days = int(self._config.get("DATA_RETENTION_DAYS", 7))  # 默认值为7天
         self._click_button(
             By.XPATH, "//div[@class='el-tabs__nav is-top']/div[@id='tab-second']"
@@ -620,7 +587,7 @@ class DataFetcher:
                 By.XPATH, "//*[@id='pane-second']/div[1]/div/label[2]/span[1]"
             )
         else:
-            self._logger.error(f"Unsupported retention days value: {retention_days}")
+            self._logger.error("Unsupported retention days value: %s", retention_days)
             return
 
         # 等待用电量的数据出现
@@ -645,5 +612,7 @@ class DataFetcher:
                 usages.append(usage)
                 date.append(day)
             else:
-                self._logger.info(f"The electricity consumption of {usage} get nothing")
+                self._logger.debug(
+                    "The electricity consumption of %s get nothing", usage
+                )
         return date, usages
