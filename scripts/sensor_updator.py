@@ -195,12 +195,9 @@ class MQTTSensorUpdator:
         self._client = Client(client_id="sgcc")
         self._host = host
         self._port = port
-        self._client.username = username
-        self._client.password = password
+        self._client.username_pw_set(username, password)
 
     def __enter__(self):
-        if self._client.loop_start() != MQTTErrorCode.MQTT_ERR_SUCCESS:
-            raise RuntimeError("Failed to start MQTT client loop.")
         if (
             self._client.connect(self._host, self._port)
             != MQTTErrorCode.MQTT_ERR_SUCCESS
@@ -209,9 +206,15 @@ class MQTTSensorUpdator:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._client.loop_stop() != MQTTErrorCode.MQTT_ERR_SUCCESS:
-            raise RuntimeError("Failed to stop MQTT client loop.")
-
+        pass
+    
+    def ping(self):
+        try:
+            self._client.publish("test","1").wait_for_publish()
+            return True
+        except:
+            return False         
+        
     def _publish_message(self, topic: str, payload: str, retain: bool = True):
         """
         Publish a message to the MQTT broker.
@@ -269,9 +272,7 @@ class MQTTSensorUpdator:
         :param lastdays_usages: List of daily usages for the last days.
         """
         # Publish balance
-        self._process_message(
-            MQTT_MsgEnum.CURRENT_BALANCE_MSG, user_id, balance
-        )
+        self._process_message(MQTT_MsgEnum.CURRENT_BALANCE_MSG, user_id, balance)
 
         # Publish last daily usage
         self._process_message(
@@ -282,24 +283,16 @@ class MQTTSensorUpdator:
         )
 
         # Publish monthly charge
-        self._process_message(
-            MQTT_MsgEnum.MONTH_CHARGE_MSG, user_id, month_charge
-        )
+        self._process_message(MQTT_MsgEnum.MONTH_CHARGE_MSG, user_id, month_charge)
 
         # Publish monthly usage
-        self._process_message(
-            MQTT_MsgEnum.MONTH_USAGE_MSG, user_id, month_usage
-        )
+        self._process_message(MQTT_MsgEnum.MONTH_USAGE_MSG, user_id, month_usage)
 
         # Publish yearly charge
-        self._process_message(
-            MQTT_MsgEnum.YEARLY_CHARGE_MSG, user_id, yearly_charge
-        )
+        self._process_message(MQTT_MsgEnum.YEARLY_CHARGE_MSG, user_id, yearly_charge)
 
         # Publish yearly usage
-        self._process_message(
-            MQTT_MsgEnum.YEARLY_USAGE_MSG, user_id, yearly_usage
-        )
+        self._process_message(MQTT_MsgEnum.YEARLY_USAGE_MSG, user_id, yearly_usage)
 
         # Optionally publish last days' usages
         if lastdays_usages:

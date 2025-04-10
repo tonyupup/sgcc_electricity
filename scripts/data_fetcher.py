@@ -268,11 +268,14 @@ class DataFetcher:
         """main logic here"""
         logging.info("Webdriver initialized.")
         updator = MQTTSensorUpdator(
-            os.getenv("MQTT_USERNAME"),
-            os.getenv("MQTT_PASSWORD"),
-            os.getenv("MQTT_HOST"),
-            int(os.getenv("MQTT_PORT",1883)),
-        )
+                    os.getenv("MQTT_USERNAME"),
+                    os.getenv("MQTT_PASSWORD"),
+                    os.getenv("MQTT_HOST"),
+                    int(os.getenv("MQTT_PORT",1883)),
+                )
+        with updator:
+            if not updator.ping():
+                raise RuntimeError("mqtt not connected")
 
         if self._login(
             phone_code=bool(os.getenv("DEBUG_MODE")),
