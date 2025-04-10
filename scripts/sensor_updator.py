@@ -1,11 +1,14 @@
 import logging
 import os
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
 
 import requests
 from sympy import true
-
+import typing
 from const import *
+from paho.mqtt.client import Client
+from paho.mqtt.enums import MQTTErrorCode
+import json
 
 
 class SensorUpdator:
@@ -17,7 +20,17 @@ class SensorUpdator:
         self.token = HASS_TOKEN
         self.RECHARGE_NOTIFY = os.getenv("RECHARGE_NOTIFY", "false").lower() == "true"
 
-    def update_one_userid(self, user_id: str, balance: float, last_daily_date: str, last_daily_usage: float, yearly_charge: float, yearly_usage: float, month_charge: float, month_usage: float):
+    def update_one_userid(
+        self,
+        user_id: str,
+        balance: float,
+        last_daily_date: str,
+        last_daily_usage: float,
+        yearly_charge: float,
+        yearly_usage: float,
+        month_charge: float,
+        month_usage: float,
+    ):
         postfix = f"_{user_id[-4:]}"
         if balance is not None:
             self.balance_notify(user_id, balance)
@@ -35,7 +48,9 @@ class SensorUpdator:
 
         logging.info(f"User {user_id} state-refresh task run successfully!")
 
-    def update_last_daily_usage(self, postfix: str, last_daily_date: str, sensorState: float):
+    def update_last_daily_usage(
+        self, postfix: str, last_daily_date: str, sensorState: float
+    ):
         sensorName = DAILY_USAGE_SENSOR_NAME + postfix
         request_body = {
             "state": sensorState,
@@ -50,7 +65,9 @@ class SensorUpdator:
         }
 
         self.send_url(sensorName, request_body)
-        logging.info(f"Homeassistant sensor {sensorName} state updated: {sensorState} kWh")
+        logging.info(
+            f"Homeassistant sensor {sensorName} state updated: {sensorState} kWh"
+        )
 
     def update_balance(self, postfix: str, sensorState: float):
         sensorName = BALANCE_SENSOR_NAME + postfix
@@ -68,7 +85,9 @@ class SensorUpdator:
         }
 
         self.send_url(sensorName, request_body)
-        logging.info(f"Homeassistant sensor {sensorName} state updated: {sensorState} CNY")
+        logging.info(
+            f"Homeassistant sensor {sensorName} state updated: {sensorState} CNY"
+        )
 
     def update_month_data(self, postfix: str, sensorState: float, usage=False):
         sensorName = (
@@ -93,7 +112,9 @@ class SensorUpdator:
         }
 
         self.send_url(sensorName, request_body)
-        logging.info(f"Homeassistant sensor {sensorName} state updated: {sensorState} {'kWh' if usage else 'CNY'}")
+        logging.info(
+            f"Homeassistant sensor {sensorName} state updated: {sensorState} {'kWh' if usage else 'CNY'}"
+        )
 
     def update_yearly_data(self, postfix: str, sensorState: float, usage=False):
         sensorName = (
@@ -102,7 +123,7 @@ class SensorUpdator:
             else YEARLY_CHARGE_SENSOR_NAME + postfix
         )
         if datetime.now().month == 1:
-            last_year = datetime.now().year -1 
+            last_year = datetime.now().year - 1
             last_reset = datetime.now().replace(year=last_year).strftime("%Y")
         else:
             last_reset = datetime.now().strftime("%Y")
@@ -118,7 +139,9 @@ class SensorUpdator:
             },
         }
         self.send_url(sensorName, request_body)
-        logging.info(f"Homeassistant sensor {sensorName} state updated: {sensorState} {'kWh' if usage else 'CNY'}")
+        logging.info(
+            f"Homeassistant sensor {sensorName} state updated: {sensorState} {'kWh' if usage else 'CNY'}"
+        )
 
     def send_url(self, sensorName, request_body):
         headers = {
@@ -136,21 +159,154 @@ class SensorUpdator:
 
     def balance_notify(self, user_id, balance):
 
-        if self.RECHARGE_NOTIFY :
+        if self.RECHARGE_NOTIFY:
             BALANCE = float(os.getenv("BALANCE", 10.0))
-            PUSHPLUS_TOKEN = os.getenv("PUSHPLUS_TOKEN").split(",")        
-            logging.info(f"Check the electricity bill balance. When the balance is less than {BALANCE} CNY, the notification will be sent = {self.RECHARGE_NOTIFY}")
-            if balance < BALANCE :
+            PUSHPLUS_TOKEN = os.getenv("PUSHPLUS_TOKEN").split(",")
+            logging.info(
+                f"Check the electricity bill balance. When the balance is less than {BALANCE} CNY, the notification will be sent = {self.RECHARGE_NOTIFY}"
+            )
+            if balance < BALANCE:
                 for token in PUSHPLUS_TOKEN:
                     title = "电费余额不足提醒"
-                    content = (f"您用户号{user_id}的当前电费余额为：{balance}元，请及时充值。" )
-                    url = ("http://www.pushplus.plus/send?token="+ token+ "&title="+ title+ "&content="+ content)
+                    content = (
+                        f"您用户号{user_id}的当前电费余额为：{balance}元，请及时充值。"
+                    )
+                    url = (
+                        "http://www.pushplus.plus/send?token="
+                        + token
+                        + "&title="
+                        + title
+                        + "&content="
+                        + content
+                    )
                     requests.get(url)
                     logging.info(
                         f"The current balance of user id {user_id} is {balance} CNY less than {BALANCE} CNY, notice has been sent, please pay attention to check and recharge."
                     )
-        else :
+        else:
             logging.info(
-            f"Check the electricity bill balance, the notification will be sent = {self.RECHARGE_NOTIFY}")
+                f"Check the electricity bill balance, the notification will be sent = {self.RECHARGE_NOTIFY}"
+            )
             return
 
+
+class MQTTSensorUpdator:
+    def __init__(self, username: str, password: str, host: str, port: int):
+        self._client = Client(client_id="sgcc")
+        self._host = host
+        self._port = port
+        self._client.username = username
+        self._client.password = password
+
+    def __enter__(self):
+        if self._client.loop_start() != MQTTErrorCode.MQTT_ERR_SUCCESS:
+            raise RuntimeError("Failed to start MQTT client loop.")
+        if (
+            self._client.connect(self._host, self._port)
+            != MQTTErrorCode.MQTT_ERR_SUCCESS
+        ):
+            raise RuntimeError("Failed to connect to MQTT server.")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._client.loop_stop() != MQTTErrorCode.MQTT_ERR_SUCCESS:
+            raise RuntimeError("Failed to stop MQTT client loop.")
+
+    def _publish_message(self, topic: str, payload: str, retain: bool = True):
+        """
+        Publish a message to the MQTT broker.
+
+        :param topic: The MQTT topic to publish to.
+        :param payload: The message payload.
+        :param retain: Whether to retain the message on the broker.
+        """
+        result = self._client.publish(topic, payload, retain=retain).wait_for_publish()
+        if not result:
+            logging.error(f"Failed to publish message to topic: {topic}")
+        else:
+            logging.debug(f"Published message to topic: {topic}")
+
+    def _process_message(
+        self, msg_enum, user_id: str, state: float, attributes: dict = None
+    ):
+        """
+        Process and publish an MQTT message.
+
+        :param msg_enum: The MQTT message type (from MQTT_MsgEnum).
+        :param user_id: The user ID.
+        :param state: The state value to publish.
+        :param attributes: Optional attributes to include in the message.
+        """
+        config_topic, config, state_topic, attr_topic = get_message(msg_enum, user_id)
+        self._publish_message(config_topic, json.dumps(config))
+        self._publish_message(state_topic, state)
+        if attributes:
+            self._publish_message(attr_topic, json.dumps(attributes))
+
+    def update_one_userid(
+        self,
+        user_id: str,
+        balance: float,
+        last_daily_date: str,
+        last_daily_usage: float,
+        yearly_charge: float,
+        yearly_usage: float,
+        month_charge: float,
+        month_usage: float,
+        lastdays_usages: typing.List[typing.Tuple[str, float]] | None,
+    ):
+        """
+        Update MQTT sensors for a single user.
+
+        :param user_id: The user ID.
+        :param balance: Current balance.
+        :param last_daily_date: Date of the last daily usage.
+        :param last_daily_usage: Last daily usage value.
+        :param yearly_charge: Yearly charge value.
+        :param yearly_usage: Yearly usage value.
+        :param month_charge: Monthly charge value.
+        :param month_usage: Monthly usage value.
+        :param lastdays_usages: List of daily usages for the last days.
+        """
+        # Publish balance
+        self._process_message(
+            MQTT_MsgEnum.CURRENT_BALANCE_MSG, user_id, balance
+        )
+
+        # Publish last daily usage
+        self._process_message(
+            MQTT_MsgEnum.LASTDAILY_USAGE_MSG,
+            user_id,
+            last_daily_usage,
+            attributes={"date": last_daily_date},
+        )
+
+        # Publish monthly charge
+        self._process_message(
+            MQTT_MsgEnum.MONTH_CHARGE_MSG, user_id, month_charge
+        )
+
+        # Publish monthly usage
+        self._process_message(
+            MQTT_MsgEnum.MONTH_USAGE_MSG, user_id, month_usage
+        )
+
+        # Publish yearly charge
+        self._process_message(
+            MQTT_MsgEnum.YEARLY_CHARGE_MSG, user_id, yearly_charge
+        )
+
+        # Publish yearly usage
+        self._process_message(
+            MQTT_MsgEnum.YEARLY_USAGE_MSG, user_id, yearly_usage
+        )
+
+        # Optionally publish last days' usages
+        if lastdays_usages:
+            for day, usage in lastdays_usages:
+                self._process_message(
+                    MQTT_MsgEnum.LASTDAILY_USAGE_MSG,
+                    user_id,
+                    usage,
+                    attributes={"date": day},
+                )

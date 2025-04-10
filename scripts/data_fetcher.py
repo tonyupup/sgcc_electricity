@@ -1,21 +1,20 @@
 import logging
 import os
 import re
-import subprocess
 import time
 
 import random
 import base64
-import sqlite3
 import typing
-import undetected_chromedriver as uc
+
 from datetime import datetime
+from selenium.webdriver import Chrome, ChromeService
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
-from sensor_updator import SensorUpdator
+from sensor_updator import MQTTSensorUpdator
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.types import WaitExcTypes
 from selenium.common import exceptions as sel_ex
@@ -39,54 +38,6 @@ def base64_to_PLI(base64_str: str):
     return img
 
 
-def get_transparency_location(image):
-    """获取基于透明元素裁切图片的左上角、右下角坐标
-
-    :param image: cv2加载好的图像
-    :return: (left, upper, right, lower)元组
-    """
-    # 1. 扫描获得最左边透明点和最右边透明点坐标
-    height, width, channel = image.shape  # 高、宽、通道数
-    assert channel == 4  # 无透明通道报错
-    first_location = None  # 最先遇到的透明点
-    last_location = None  # 最后遇到的透明点
-    first_transparency = []  # 从左往右最先遇到的透明点，元素个数小于等于图像高度
-    last_transparency = []  # 从左往右最后遇到的透明点，元素个数小于等于图像高度
-    for y, rows in enumerate(image):
-        for x, BGRA in enumerate(rows):
-            alpha = BGRA[3]
-            if alpha != 0:
-                if (
-                    not first_location or first_location[1] != y
-                ):  # 透明点未赋值或为同一列
-                    first_location = (x, y)  # 更新最先遇到的透明点
-                    first_transparency.append(first_location)
-                last_location = (x, y)  # 更新最后遇到的透明点
-        if last_location:
-            last_transparency.append(last_location)
-
-    # 2. 矩形四个边的中点
-    top = first_transparency[0]
-    bottom = first_transparency[-1]
-    left = None
-    right = None
-    for first, last in zip(first_transparency, last_transparency):
-        if not left:
-            left = first
-        if not right:
-            right = last
-        if first[0] < left[0]:
-            left = first
-        if last[0] > right[0]:
-            right = last
-
-    # 3. 左上角、右下角
-    upper_left = (left[0], top[1])  # 左上角
-    bottom_right = (right[0], bottom[1])  # 右下角
-
-    return upper_left[0], upper_left[1], bottom_right[0], bottom_right[1]
-
-
 class DataFetcher:
     def __init__(self, username: str, password: str):
         if "PYTHON_IN_DOCKER" not in os.environ:
@@ -98,9 +49,10 @@ class DataFetcher:
         self.onnx = ONNX("./captcha.onnx")
 
         # 获取 ENABLE_DATABASE_STORAGE 的值，默认为 False
-        self.enable_database_storage = (
-            os.getenv("ENABLE_DATABASE_STORAGE", "false").lower() == "true"
-        )
+        # self.enable_database_storage = (
+        #     os.getenv("ENABLE_DATABASE_STORAGE", "false").lower() == "true"
+        # )
+
         self.DRIVER_IMPLICITY_WAIT_TIME = int(
             os.getenv("DRIVER_IMPLICITY_WAIT_TIME", 10)
         )
@@ -136,14 +88,13 @@ class DataFetcher:
         if ignore_timeout:
             ignored_exceptions = list(ignored_exceptions)
             ignored_exceptions.append(sel_ex.TimeoutException)
-        click_element = WebDriverWait(
+        return WebDriverWait(
             self.__driver,
             timeout=timeout,
             ignored_exceptions=ignored_exceptions,
         ).until(
             EC.visibility_of_element_located((button_search_type, button_search_key))
         )
-        return click_element
 
     def _visible_elems(
         self,
@@ -159,7 +110,7 @@ class DataFetcher:
         if ignore_timeout:
             ignored_exceptions = list(ignored_exceptions)
             ignored_exceptions.append(sel_ex.TimeoutException)
-        click_element = WebDriverWait(
+        return WebDriverWait(
             self.__driver,
             timeout=timeout,
             ignored_exceptions=ignored_exceptions,
@@ -168,7 +119,6 @@ class DataFetcher:
                 (button_search_type, button_search_key)
             )
         )
-        return click_element
 
     # @staticmethod
     def _is_captcha_legal(self, captcha):
@@ -179,13 +129,6 @@ class DataFetcher:
             if not s.isalpha() and not s.isdigit():
                 return False
         return True
-
-    # @staticmethod
-    def _get_chromium_version(self):
-        result = str(subprocess.check_output(["chromium", "--product-version"]))
-        version = re.findall(r"(\d*)\.", result)[0]
-        logging.info(f"chromium-driver version is {version}")
-        return int(version)
 
     # @staticmethod
     def _sliding_track(self, distance):  # 机器模拟人工滑动轨迹
@@ -202,61 +145,6 @@ class DataFetcher:
             xoffset=distance, yoffset=yoffset_random
         ).release().perform()
 
-    def connect_user_db(self, user_id):
-        """创建数据库集合，db_name = electricity_daily_usage_{user_id}
-        :param user_id: 用户ID"""
-        try:
-            # 创建数据库
-            DB_NAME = os.getenv("DB_NAME", "homeassistant.db")
-            self.connect = sqlite3.connect(DB_NAME)
-            self.connect.cursor()
-            logging.info(f"Database of {DB_NAME} created successfully.")
-            # 创建表名
-            self.table_name = f"daily{user_id}"
-            sql = f"""CREATE TABLE IF NOT EXISTS {self.table_name} (
-                    date DATE PRIMARY KEY NOT NULL, 
-                    usage REAL NOT NULL)"""
-            self.connect.execute(sql)
-            logging.info(f"Table {self.table_name} created successfully")
-
-            # 创建data表名
-            self.table_expand_name = f"data{user_id}"
-            sql = f"""CREATE TABLE IF NOT EXISTS {self.table_expand_name} (
-                    name TEXT PRIMARY KEY NOT NULL,
-                    value TEXT NOT NULL)"""
-            self.connect.execute(sql)
-            logging.info(f"Table {self.table_expand_name} created successfully")
-
-        # 如果表已存在，则不会创建
-        except sqlite3.Error as e:
-            logging.debug(f"Create db or Table error:{e}")
-            return False
-        return True
-
-    def insert_data(self, data: dict):
-        if self.connect is None:
-            logging.error("Database connection is not established.")
-            return
-        # 创建索引
-        try:
-            sql = f"INSERT OR REPLACE INTO {self.table_name} VALUES(strftime('%Y-%m-%d','{data['date']}'),{data['usage']});"
-            self.connect.execute(sql)
-            self.connect.commit()
-        except BaseException as e:
-            logging.debug(f"Data update failed: {e}")
-
-    def insert_expand_data(self, data: dict):
-        if self.connect is None:
-            logging.error("Database connection is not established.")
-            return
-        # 创建索引
-        try:
-            sql = f"INSERT OR REPLACE INTO {self.table_expand_name} VALUES('{data['name']}','{data['value']}');"
-            self.connect.execute(sql)
-            self.connect.commit()
-        except BaseException as e:
-            logging.debug(f"Data update failed: {e}")
-
     def _init_webdriver(self):
         chrome_options = Options()
         chrome_options.add_argument("--incognito")
@@ -272,8 +160,8 @@ class DataFetcher:
         if remote_driver:
             self.__driver: WebDriver = WebDriver(remote_driver, options=chrome_options)
         else:
-            self.__driver = uc.Chrome(
-                driver_executable_path="/usr/bin/chromedriver",
+            self.__driver = Chrome(
+                service=ChromeService(executable_path="/usr/bin/chromedriver"),
                 options=chrome_options,
             )
         self.__driver.implicitly_wait(self.DRIVER_IMPLICITY_WAIT_TIME)
@@ -291,16 +179,16 @@ class DataFetcher:
                     elem = self.__driver.find_element(*cond)
                     if "data:image/png;base64" in elem.get_attribute("src"):
                         return elem
-                except Exception:
+                except sel_ex.NoSuchElementException:
                     return False
 
             qr_code_elem = WebDriverWait(self.__driver, 5).until(wait_for_element)
             ActionChains(self.__driver).move_to_element(qr_code_elem).perform()
-            logging.info("please scan the QR code.")
+            logging.info("Please scan the QR code within 30 seconds.")
             # wait for login success
-            return WebDriverWait(self.__driver, 20).until(
+            return WebDriverWait(self.__driver, 30).until(
                 EC.url_to_be("https://www.95598.cn/osgweb/my95598"),
-                "waiting for scan qrcode login failed, not redirect to target page",
+                "Waiting for scanning qrcode login failed to redirect to target page",
             )
 
         self.__driver.get(LOGIN_URL)
@@ -319,37 +207,12 @@ class DataFetcher:
         )
         logging.info("Click the Agree option.")
 
-        # phone code
-        """
-        if phone_code:
-            self._click_button(
-                By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[3]/span'
-            )
-            input_elements = self._visible_elems(By.CLASS_NAME, "el-input__inner")
-            input_elements[2].send_keys(self._username)
-            logging.info(f"input_elements username : {self._username}")
-            self._click_button(
-                By.XPATH,
-                '//*[@id="login_box"]/div[2]/div[2]/form/div[1]/div[2]/div[2]/div/a',
-            )
-            code = input("Input your phone verification code: ")
-            input_elements[3].send_keys(code)
-            logging.info(f"input_elements verification code: {code}.")
-            # click login button
-            self._click_button(
-                By.XPATH,
-                '//*[@id="login_box"]/div[2]/div[2]/form/div[2]/div/button/span',
-            )
-            logging.info("Click login button.")
-            return True
-        """
-
         # input username and password
         input_elements = self._visible_elems(By.CLASS_NAME, "el-input__inner")
         input_elements[0].send_keys(self._username)
         logging.info(f"input_elements username : {self._username}")
         input_elements[1].send_keys(self._password)
-        logging.info(f"input_elements password : {self._password}")
+        logging.info(f"input_elements password")
         self._click_button(By.CLASS_NAME, "el-button.el-button--primary")
         logging.info("Click login button.")
         # sometimes ddddOCR may fail, so add retry logic)
@@ -376,23 +239,20 @@ class DataFetcher:
             ):
                 logging.info(f"Sliding CAPTCHA recognition success, login success.")
                 return True
-            else:
-                logging.warning(
-                    f"wait login success jump failed, retry times: {retry_times}"
-                )
-                err_msg = self._visible_elem(By.XPATH, "//div[@class='errmsg-tip']", 10)
-                if err_msg:
-                    err_msg = err_msg.text
-                    logging.error(f"Sliding CAPTCHA recognition failed, {err_msg}")
-                    return False
-                continue
-        logging.error(
-            f"Login failed, maybe caused by Sliding CAPTCHA recognition failed"
-        )
+
+            logging.warning(
+                f"wait login success jump failed, retry times: {retry_times}"
+            )
+            err_msg = self._visible_elem(By.XPATH, "//div[@class='errmsg-tip']", 10)
+            if err_msg:
+                err_msg = err_msg.text
+                logging.error(f"Sliding CAPTCHA recognition failed, {err_msg}")
+                return False
         return False
 
     def __enter__(self):
-        return self._init_webdriver()
+        self._init_webdriver()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
@@ -407,7 +267,12 @@ class DataFetcher:
     def fetch(self):
         """main logic here"""
         logging.info("Webdriver initialized.")
-        updator = SensorUpdator()
+        updator = MQTTSensorUpdator(
+            os.getenv("MQTT_USERNAME"),
+            os.getenv("MQTT_PASSWORD"),
+            os.getenv("MQTT_HOST"),
+            int(os.getenv("MQTT_PORT",1883)),
+        )
 
         if self._login(
             phone_code=bool(os.getenv("DEBUG_MODE")),
@@ -445,18 +310,21 @@ class DataFetcher:
                         yearly_usage,
                         month_charge,
                         month_usage,
+                        lastdays_usages
                     ) = self._get_all_data(user_id, userid_index)
-                    updator.update_one_userid(
-                        user_id,
-                        balance,
-                        last_daily_date,
-                        last_daily_usage,
-                        yearly_charge,
-                        yearly_usage,
-                        month_charge,
-                        month_usage,
-                    )
-            except Exception as e:
+                    with updator:
+                        updator.update_one_userid(
+                            user_id,
+                            balance,
+                            last_daily_date,
+                            last_daily_usage,
+                            yearly_charge,
+                            yearly_usage,
+                            month_charge,
+                            month_usage,
+                            lastdays_usages,
+                        )
+            except (sel_ex.NoSuchElementException, sel_ex.TimeoutException) as e:
                 if userid_index != len(user_id_list):
                     logging.info(
                         f"The current user {user_id} data fetching failed {e}, the next user data will be fetched."
@@ -467,18 +335,17 @@ class DataFetcher:
                 continue
 
     def _get_current_userid(self):
-        current_userid = self.__driver.find_element(
+        return self.__driver.find_element(
             By.XPATH,
             '//*[@id="app"]/div/div/article/div/div/div[2]/div/div/div[1]/div[2]/div/div/div/div[2]/div/div[1]/div/ul/div/li[1]/span[2]',
         ).text
-        return current_userid
 
     def _choose_current_userid(self, userid_index):
         elements = self.__driver.find_elements(By.CLASS_NAME, "button_confirm")
         if elements:
             self._click_button(
                 By.XPATH,
-                f"""//*[@id="app"]/div/div[2]/div/div/div/div[2]/div[2]/div/button""",
+                '//*[@id="app"]/div/div[2]/div/div/div/div[2]/div[2]/div/button',
             )
         self._click_button(By.CLASS_NAME, "el-input__suffix")
         self._click_button(
@@ -501,71 +368,26 @@ class DataFetcher:
 
         if yearly_usage is None:
             logging.error(f"Get year power usage for {user_id} failed, pass")
-        else:
-            logging.info(
-                f"Get year power usage for {user_id} successfully, usage is {yearly_usage} kwh"
-            )
         if yearly_charge is None:
             logging.error(f"Get year power charge for {user_id} failed, pass")
-        else:
-            logging.info(
-                f"Get year power charge for {user_id} successfully, yealrly charge is {yearly_charge} CNY"
-            )
 
         # 按月获取数据
         month, month_usage, month_charge = self._get_month_usage()
         if month is None:
             logging.error(f"Get month power usage for {user_id} failed, pass")
-        else:
-            for m in range(len(month)):
-                logging.info(
-                    f"Get month power charge for {user_id} successfully, {month[m]} usage is {month_usage[m]} KWh, charge is {month_charge[m]} CNY."
-                )
+
         # get yesterday usage
         last_daily_date, last_daily_usage = self._get_yesterday_usage()
         if last_daily_usage is None:
             logging.error(f"Get daily power consumption for {user_id} failed, pass")
-        else:
-            logging.info(
-                f"Get daily power consumption for {user_id} successfully, , {last_daily_date} usage is {last_daily_usage} kwh."
-            )
-        if month is None:
-            logging.error(f"Get month power usage for {user_id} failed, pass")
 
-        # 新增储存用电量
-        if self.enable_database_storage:
-            # 将数据存储到数据库
-            logging.info(
-                "enable_database_storage is true, we will store the data to the database."
-            )
-            # 按天获取数据 7天/30天
-            date, usages = self._get_daily_usage_data()
-            self._save_user_data(
-                user_id,
-                balance,
-                last_daily_date,
-                last_daily_usage,
-                date,
-                usages,
-                month,
-                month_usage,
-                month_charge,
-                yearly_charge,
-                yearly_usage,
-            )
-        else:
-            logging.info(
-                "enable_database_storage is false, we will not store the data to the database."
-            )
+        last_days_usages = None
+        # 按天获取数据 7天/30天
+        if os.getenv("DATA_RETENTION_DAYS"):
+            last_days_usages = self._get_daily_usage_data()
 
-        if month_charge:
-            month_charge = month_charge[-1]
-        else:
-            month_charge = None
-        if month_usage:
-            month_usage = month_usage[-1]
-        else:
-            month_usage = None
+        month_charge = float(month_charge[-1]) if month_charge else None
+        month_usage = float(month_usage[-1]) if month_usage else None
 
         return (
             balance,
@@ -575,33 +397,27 @@ class DataFetcher:
             yearly_usage,
             month_charge,
             month_usage,
+            last_days_usages
         )
 
     def _get_user_ids(self):
         try:
             # 刷新网页
-            self.__driver.refresh()
             element = WebDriverWait(
                 self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME
             ).until(EC.presence_of_element_located((By.CLASS_NAME, "el-dropdown")))
             # click roll down button for user id
             self._click_button(By.XPATH, "//div[@class='el-dropdown']/span")
-            logging.debug(
-                f"""self._click_button(driver, By.XPATH, "//div[@class='el-dropdown']/span")"""
-            )
+
             # wait for roll down menu displayed
             target = self.__driver.find_element(
                 By.CLASS_NAME, "el-dropdown-menu.el-popper"
             ).find_element(By.TAG_NAME, "li")
-            logging.debug(
-                f"""target = driver.find_element(By.CLASS_NAME, "el-dropdown-menu.el-popper").find_element(By.TAG_NAME, "li")"""
-            )
+
             WebDriverWait(self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
                 EC.visibility_of(target)
             )
-            logging.debug(
-                f"""WebDriverWait(driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(EC.visibility_of(target))"""
-            )
+
             WebDriverWait(self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
                 EC.text_to_be_present_in_element(
                     (By.XPATH, "//ul[@class='el-dropdown-menu el-popper']/li"), ":"
@@ -624,10 +440,8 @@ class DataFetcher:
         try:
             balance = self.__driver.find_element(By.CLASS_NAME, "num").text
             balance_text = self.__driver.find_element(By.CLASS_NAME, "amttxt").text
-            if "欠费" in balance_text:
-                return -float(balance)
-            else:
-                return float(balance)
+
+            return -float(balance) if "欠费" in balance_text else float(balance)
         except:
             return None
 
@@ -666,7 +480,7 @@ class DataFetcher:
             logging.error("The yearly_charge data get failed : %s", e)
             yearly_charge = None
 
-        return yearly_usage, yearly_charge
+        return float(yearly_usage), float(yearly_charge)
 
     def _get_yesterday_usage(self):
         """获取最近一次用电量"""
@@ -717,17 +531,19 @@ class DataFetcher:
             month = []
             usage = []
             charge = []
-            for i in range(len(month_element)):
-                month.append(month_element[i][0])
-                usage.append(month_element[i][1])
-                charge.append(month_element[i][2])
+            for index, _ in enumerate(month_element):
+                month.append(month_element[index][0])
+                usage.append(month_element[index][1])
+                charge.append(month_element[index][2])
             return month, usage, charge
         except Exception as e:
             logging.error(f"The month data get failed : {e.args}")
             return None, None, None
 
     # 增加获取每日用电量的函数
-    def _get_daily_usage_data(self):
+    def _get_daily_usage_data(
+        self,
+    ) -> typing.List[typing.Tuple[str, float]] | None:
         """储存指定天数的用电量"""
         retention_days = int(os.getenv("DATA_RETENTION_DAYS", 7))  # 默认值为7天
         self._click_button(
@@ -744,7 +560,7 @@ class DataFetcher:
             )
         else:
             logging.error(f"Unsupported retention days value: {retention_days}")
-            return
+            return None
 
         # 等待用电量的数据出现
         usage_element = (
@@ -758,104 +574,12 @@ class DataFetcher:
             By.XPATH,
             "//*[@id='pane-second']/div[2]/div[2]/div[1]/div[3]/table/tbody/tr",
         )  # 用电量值列表
-        date = []
-        usages = []
+
         # 将用电量保存为字典
-        for i in days_element:
-            day = i.find_element(By.XPATH, "td[1]/div").text
-            usage = i.find_element(By.XPATH, "td[2]/div").text
+        lastdays_usage = []
+        for elem in days_element:
+            day = elem.find_element(By.XPATH, "td[1]/div").text
+            usage = elem.find_element(By.XPATH, "td[2]/div").text
             if usage != "":
-                usages.append(usage)
-                date.append(day)
-            else:
-                logging.info(f"The electricity consumption of {usage} get nothing")
-        return date, usages
-
-    def _save_user_data(
-        self,
-        user_id,
-        balance,
-        last_daily_date,
-        last_daily_usage,
-        date,
-        usages,
-        month,
-        month_usage,
-        month_charge,
-        yearly_charge,
-        yearly_usage,
-    ):
-        # 连接数据库集合
-        if self.connect_user_db(user_id):
-            # 写入当前户号
-            dic = {"name": "user", "value": f"{user_id}"}
-            self.insert_expand_data(dic)
-            # 写入剩余金额
-            dic = {"name": "balance", "value": f"{balance}"}
-            self.insert_expand_data(dic)
-            # 写入最近一次更新时间
-            dic = {"name": f"daily_date", "value": f"{last_daily_date}"}
-            self.insert_expand_data(dic)
-            # 写入最近一次更新时间用电量
-            dic = {"name": f"daily_usage", "value": f"{last_daily_usage}"}
-            self.insert_expand_data(dic)
-
-            # 写入年用电量
-            dic = {"name": "yearly_usage", "value": f"{yearly_usage}"}
-            self.insert_expand_data(dic)
-            # 写入年用电电费
-            dic = {"name": "yearly_charge", "value": f"{yearly_charge} "}
-            self.insert_expand_data(dic)
-
-            for index in range(len(date)):
-                dic = {"date": date[index], "usage": float(usages[index])}
-                # 插入到数据库
-                try:
-                    self.insert_data(dic)
-                    logging.info(
-                        f"The electricity consumption of {usages[index]}KWh on {date[index]} has been successfully deposited into the database"
-                    )
-                except Exception as e:
-                    logging.debug(
-                        f"The electricity consumption of {date[index]} failed to save to the database, which may already exist: {str(e)}"
-                    )
-
-            if month:
-                for index in range(len(month)):
-                    try:
-                        dic = {
-                            "name": f"{month[index]}usage",
-                            "value": f"{month_usage[index]}",
-                        }
-                        self.insert_expand_data(dic)
-                        dic = {
-                            "name": f"{month[index]}charge",
-                            "value": f"{month_charge[index]}",
-                        }
-                        self.insert_expand_data(dic)
-                    except Exception as e:
-                        logging.debug(
-                            f"The electricity consumption of {month[index]} failed to save to the database, which may already exist: {str(e)}"
-                        )
-            if month_charge:
-                month_charge = month_charge[-1]
-            else:
-                month_charge = None
-
-            if month_usage:
-                month_usage = month_usage[-1]
-            else:
-                month_usage = None
-            # 写入本月电量
-            dic = {"name": f"month_usage", "value": f"{month_usage}"}
-            self.insert_expand_data(dic)
-            # 写入本月电费
-            dic = {"name": f"month_charge", "value": f"{month_charge}"}
-            self.insert_expand_data(dic)
-            # dic = {'date': month[index], 'usage': float(month_usage[index]), 'charge': float(month_charge[index])}
-            self.connect.close()
-        else:
-            logging.info(
-                "The database creation failed and the data was not written correctly."
-            )
-            return
+                lastdays_usage.append((day, float(usage)))
+        return lastdays_usage
