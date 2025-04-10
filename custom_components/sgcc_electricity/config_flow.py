@@ -98,7 +98,9 @@ class SGCCElectricityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """
         if user_input is not None:
             await self.async_set_unique_id(f"{user_input[SGCC_USERNAME]}")
-            self._abort_if_unique_id_mismatch()
+            self._abort_if_unique_id_configured(
+                updates=user_input,
+            )
             return self.async_update_reload_and_abort(
                 self._get_reconfigure_entry(),
                 data_updates=user_input,

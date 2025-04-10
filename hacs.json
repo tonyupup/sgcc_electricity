@@ -1,0 +1,6 @@
+{
+    "name": "sgcc_electricity integration",
+    "country": "CN",
+    "homeassistant": "2025.0",
+    "hacs": "2.0.0"
+}
