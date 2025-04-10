@@ -1,24 +1,19 @@
 name: Docker Image Build
 
 on:  
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'version of this branch'
-        required: true
-        type: string
   push:
     tags:
       - 'v*'
 
 jobs:
-  ghr_push:
+  # 构建 rich 镜像
+  build_rich_image:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - name: checkout
+      - name: Checkout source code
         uses: actions/checkout@v2
 
       - name: Set up QEMU
@@ -30,25 +25,49 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@v1          
 
-      - name: Log-in to ghcr.io
+      - name: Log in to ghcr.io
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login https://ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Build and push container image
+      - name: Build and push rich container image
         run: |
           IMAGE_ID=$(echo ghcr.io/${{ github.repository }} | tr '[A-Z]' '[a-z]')
-          # Strip git ref prefix from version
-          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
-          # Strip "v" prefix from tag name
-          [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
+          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,' | sed -e 's/^v//')
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
 
-          # Build and Publish container image
           docker buildx build --push \
           --tag $IMAGE_ID:rich-$VERSION --tag $IMAGE_ID:rich-latest \
           --platform linux/amd64,linux/arm64 .
 
-          # Build and thin image
+  # 构建 thin 镜像
+  build_thin_image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+        with:
+          platforms: linux/amd64,linux/arm64,linux/386
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v1          
+
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login https://ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build and push thin container image
+        run: |
+          IMAGE_ID=$(echo ghcr.io/${{ github.repository }} | tr '[A-Z]' '[a-z]')
+          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,' | sed -e 's/^v//')
+          echo IMAGE_ID=$IMAGE_ID
+          echo VERSION=$VERSION
+
           docker buildx build --push -f Dockerfile.thin \
           --tag $IMAGE_ID:thin-$VERSION --tag $IMAGE_ID:thin-latest \
           --platform linux/amd64,linux/arm64 .
