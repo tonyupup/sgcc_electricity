@@ -160,6 +160,8 @@ def get_message(msg_type: MQTT_MsgEnum, user_id: str):
     config_msg = msg_type.value[0].copy()
     config_topic = msg_type.value[1]
 
+    config_msg["device"] = device_msg
+    config_msg["name"] = config_msg["name"] + f"_{user_id}"
     config_msg["unique_id"] = config_msg["unique_id"].format(user_id=user_id)
     config_msg["state_topic"] = config_msg["state_topic"].format(user_id=user_id)
     config_msg["json_attributes_topic"] = config_msg["json_attributes_topic"].format(

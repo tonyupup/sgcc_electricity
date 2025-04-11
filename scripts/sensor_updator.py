@@ -223,11 +223,8 @@ class MQTTSensorUpdator:
         :param payload: The message payload.
         :param retain: Whether to retain the message on the broker.
         """
-        result = self._client.publish(topic, payload, retain=retain).wait_for_publish()
-        if not result:
-            logging.error(f"Failed to publish message to topic: {topic}")
-        else:
-            logging.debug(f"Published message to topic: {topic}")
+        self._client.publish(topic, payload, retain=retain).wait_for_publish()
+
 
     def _process_message(
         self, msg_enum, user_id: str, state: float, attributes: dict = None
@@ -241,7 +238,7 @@ class MQTTSensorUpdator:
         :param attributes: Optional attributes to include in the message.
         """
         config_topic, config, state_topic, attr_topic = get_message(msg_enum, user_id)
-        self._publish_message(config_topic, json.dumps(config))
+        self._publish_message(config_topic, json.dumps(config), true)
         self._publish_message(state_topic, state)
         if attributes:
             self._publish_message(attr_topic, json.dumps(attributes))
