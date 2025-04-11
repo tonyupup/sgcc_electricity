@@ -300,12 +300,12 @@ class DataFetcher:
             "Here are a total of %d userids, which are %s among which %s will be ignored.",
             len(user_id_list),
             user_id_list,
-            {self.IGNORE_USER_ID},
+            self.IGNORE_USER_ID,
         )
         for userid_index, user_id in enumerate(user_id_list):
             if user_id in self.IGNORE_USER_ID:
                 logging.info(
-                    "The user ID %s will be ignored in user_id_list", current_userid
+                    "The user ID %s will be ignored in user_id_list", user_id
                 )
                 continue
             try:
