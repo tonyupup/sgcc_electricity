@@ -107,14 +107,8 @@ def main():
 def run_task(data_fetcher: DataFetcher):
     for retry_times in range(1, RETRY_TIMES_LIMIT + 1):
         with data_fetcher:
-            try:
-                return data_fetcher.fetch()
-            except Exception as e:
-                logging.error(
-                    f"state-refresh task failed, reason is [{e}], {RETRY_TIMES_LIMIT - retry_times} retry times left."
-                )
-
-
+            return data_fetcher.fetch()
+        
 def logger_init(level: str):
     logger = logging.getLogger()
     logger.setLevel(level)

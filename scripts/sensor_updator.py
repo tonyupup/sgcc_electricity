@@ -3,7 +3,6 @@ import os
 from datetime import datetime, timedelta
 
 import requests
-from sympy import true
 import typing
 from const import *
 from paho.mqtt.client import Client
@@ -238,7 +237,7 @@ class MQTTSensorUpdator:
         :param attributes: Optional attributes to include in the message.
         """
         config_topic, config, state_topic, attr_topic = get_message(msg_enum, user_id)
-        self._publish_message(config_topic, json.dumps(config), true)
+        self._publish_message(config_topic, json.dumps(config), True)
         self._publish_message(state_topic, state)
         if attributes:
             self._publish_message(attr_topic, json.dumps(attributes))

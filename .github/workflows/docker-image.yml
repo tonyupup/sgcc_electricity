@@ -47,6 +47,9 @@ jobs:
           tags: |
             type=raw,value=${{ matrix.type }}-latest
             type=ref,event=tag,prefix=${{ matrix.type }}-
+          flavor: |
+            latest=false
+            prefix=
 
       - name: Setup build cache
         uses: actions/cache@v4
