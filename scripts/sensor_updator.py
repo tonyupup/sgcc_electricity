@@ -246,7 +246,7 @@ class MQTTSensorUpdator:
             self._publish_message(attr_topic, json.dumps(attributes))
 
     def publish_config(self, user_id: str):
-        for config in MQTT_MsgEnum.__members__.keys():
+        for _, config in MQTT_MsgEnum.__members__.items():
             config_topic, config, _, _ = get_message(config, user_id)
             self._publish_message(config_topic, json.dumps(config), True)
 

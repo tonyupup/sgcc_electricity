@@ -73,5 +73,5 @@ jobs:
             type=local,src=/tmp/.buildx-cache
             type=gha
           cache-to: |
-            type=local,dest=/tmp/.buildx-cache,mode=max
-            type=gha,mode=max
+            type=local,dest=/tmp/.buildx-cache
+            type=gha
