@@ -55,9 +55,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ matrix.type }}-${{ github.sha }}
+          key: ${{ runner.os }}-buildx-${{ matrix.type }}-${{ hashFiles('Dockerfile*', 'requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-buildx-${{ matrix.type }}-
+            ${{ runner.os }}-buildx-
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -68,5 +69,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ github.ref }}-${{ matrix.type }}
-          cache-to: type=gha,mode=max,scope=${{ github.ref }}-${{ matrix.type }}
+          cache-from: |
+            type=local,src=/tmp/.buildx-cache
+            type=gha
+          cache-to: |
+            type=local,dest=/tmp/.buildx-cache,mode=max
+            type=gha,mode=max

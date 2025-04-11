@@ -61,7 +61,7 @@ class DataFetcher:
         self.RETRY_WAIT_TIME_OFFSET_UNIT = int(
             os.getenv("RETRY_WAIT_TIME_OFFSET_UNIT", 10)
         )
-        self.IGNORE_USER_ID = os.getenv("IGNORE_USER_ID", "xxxxx,xxxxx").split(",")
+        self.IGNORE_USER_ID = os.getenv("IGNORE_USER_ID", "").split(",")
 
     # @staticmethod
     def _click_button(self, button_search_type, button_search_key, timeout=None):
@@ -251,7 +251,11 @@ class DataFetcher:
         return False
 
     def __enter__(self):
-        self._init_webdriver()
+        try:
+            self._init_webdriver()
+        except sel_ex.WebDriverException as e:
+            logging.error("fail to init webdriver", e)
+            raise RuntimeError("fail to init webdriver, check config")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -268,11 +272,11 @@ class DataFetcher:
         """main logic here"""
         logging.info("Webdriver initialized.")
         updator = MQTTSensorUpdator(
-                    os.getenv("MQTT_USERNAME"),
-                    os.getenv("MQTT_PASSWORD"),
-                    os.getenv("MQTT_HOST"),
-                    int(os.getenv("MQTT_PORT",1883)),
-                )
+            os.getenv("MQTT_USERNAME"),
+            os.getenv("MQTT_PASSWORD"),
+            os.getenv("MQTT_HOST"),
+            int(os.getenv("MQTT_PORT", 1883)),
+        )
         with updator:
             if not updator.ping():
                 raise RuntimeError("mqtt not connected")
@@ -305,7 +309,7 @@ class DataFetcher:
                     continue
                 else:
                     ### get data
-                    (
+                    data = (
                         balance,
                         last_daily_date,
                         last_daily_usage,
@@ -313,8 +317,9 @@ class DataFetcher:
                         yearly_usage,
                         month_charge,
                         month_usage,
-                        lastdays_usages
+                        lastdays_usages,
                     ) = self._get_all_data(user_id, userid_index)
+                    logging.debug("fetch data success", data)
                     with updator:
                         updator.update_one_userid(
                             user_id,
@@ -358,7 +363,7 @@ class DataFetcher:
     def _get_all_data(self, user_id, userid_index):
         balance = self._get_electric_balance()
         if balance is None:
-            logging.info(f"Get electricity charge balance for {user_id} failed, Pass.")
+            logging.warning(f"Get electricity charge balance for {user_id} failed, Pass.")
         else:
             logging.info(
                 f"Get electricity charge balance for {user_id} successfully, balance is {balance} CNY."
@@ -400,7 +405,7 @@ class DataFetcher:
             yearly_usage,
             month_charge,
             month_usage,
-            last_days_usages
+            last_days_usages,
         )
 
     def _get_user_ids(self):
