@@ -293,23 +293,45 @@ class DataFetcher:
         logging.info(f"Login successfully on {LOGIN_URL}")
         logging.info(f"Try to get the userid list")
         user_id_list = self._get_user_ids()
+        if not user_id_list:
+            raise RuntimeError("fail to get user_id list under this account")
+
         logging.info(
-            f"Here are a total of {len(user_id_list)} userids, which are {user_id_list} among which {self.IGNORE_USER_ID} will be ignored."
+            "Here are a total of %d userids, which are %s among which %s will be ignored.",
+            len(user_id_list),
+            user_id_list,
+            {self.IGNORE_USER_ID},
         )
         for userid_index, user_id in enumerate(user_id_list):
+            if user_id in self.IGNORE_USER_ID:
+                logging.info(
+                    "The user ID %s will be ignored in user_id_list", current_userid
+                )
+                continue
             try:
                 # switch to electricity charge balance page
                 self.__driver.get(BALANCE_URL)
                 self._choose_current_userid(userid_index)
-                current_userid = self._get_current_userid()
-                if current_userid in self.IGNORE_USER_ID:
-                    logging.info(
-                        f"The user ID {current_userid} will be ignored in user_id_list"
-                    )
-                    continue
-                else:
-                    ### get data
-                    data = (
+
+                with updator:
+                    updator.publish_config(user_id)
+                    
+                ### get data
+                data = (
+                    balance,
+                    last_daily_date,
+                    last_daily_usage,
+                    yearly_charge,
+                    yearly_usage,
+                    month_charge,
+                    month_usage,
+                    lastdays_usages,
+                ) = self._get_all_data(user_id, userid_index)
+                
+                logging.debug("fetch data success, data %s", data)
+                with updator:
+                    updator.update_one_userid(
+                        user_id,
                         balance,
                         last_daily_date,
                         last_daily_usage,
@@ -318,21 +340,8 @@ class DataFetcher:
                         month_charge,
                         month_usage,
                         lastdays_usages,
-                    ) = self._get_all_data(user_id, userid_index)
-                    logging.debug("fetch data success", data)
-                    with updator:
-                        updator.update_one_userid(
-                            user_id,
-                            balance,
-                            last_daily_date,
-                            last_daily_usage,
-                            yearly_charge,
-                            yearly_usage,
-                            month_charge,
-                            month_usage,
-                            lastdays_usages,
-                        )
-                    logging.info("success update sensor for user_id: %s", user_id)
+                    )
+                logging.info("success update sensor for user_id: %s", user_id)
             except (sel_ex.NoSuchElementException, sel_ex.TimeoutException) as e:
                 if userid_index != len(user_id_list):
                     logging.info(
@@ -341,7 +350,6 @@ class DataFetcher:
                 else:
                     logging.info(f"The user {user_id} data fetching failed, {e}")
                     logging.info("Webdriver quit after fetching data successfully.")
-                continue
 
     def _get_current_userid(self):
         return self.__driver.find_element(
@@ -364,7 +372,9 @@ class DataFetcher:
     def _get_all_data(self, user_id, userid_index):
         balance = self._get_electric_balance()
         if balance is None:
-            logging.warning(f"Get electricity charge balance for {user_id} failed, Pass.")
+            logging.warning(
+                f"Get electricity charge balance for {user_id} failed, Pass."
+            )
         else:
             logging.info(
                 f"Get electricity charge balance for {user_id} successfully, balance is {balance} CNY."

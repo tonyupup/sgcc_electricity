@@ -205,15 +205,15 @@ class MQTTSensorUpdator:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-    
+        self._client.disconnect()
+
     def ping(self):
         try:
-            self._client.publish("test","1").wait_for_publish()
+            self._client.publish("test", "1").wait_for_publish()
             return True
         except:
-            return False         
-        
+            return False
+
     def _publish_message(self, topic: str, payload: str, retain: bool = False):
         """
         Publish a message to the MQTT broker.
@@ -224,9 +224,12 @@ class MQTTSensorUpdator:
         """
         self._client.publish(topic, payload, retain=retain).wait_for_publish()
 
-
-    def _process_message(
-        self, msg_enum, user_id: str, state: float, attributes: dict = None
+    def _publish_value(
+        self,
+        msg_enum: MQTT_MsgEnum,
+        user_id: str,
+        state: float,
+        attributes: dict = None,
     ):
         """
         Process and publish an MQTT message.
@@ -236,11 +239,16 @@ class MQTTSensorUpdator:
         :param state: The state value to publish.
         :param attributes: Optional attributes to include in the message.
         """
-        config_topic, config, state_topic, attr_topic = get_message(msg_enum, user_id)
-        self._publish_message(config_topic, json.dumps(config), True)
+        _, _, state_topic, attr_topic = get_message(msg_enum, user_id)
+        # self._publish_message(config_topic, json.dumps(config), True)
         self._publish_message(state_topic, state)
         if attributes:
             self._publish_message(attr_topic, json.dumps(attributes))
+
+    def publish_config(self, user_id: str):
+        for config in MQTT_MsgEnum.__members__.keys():
+            config_topic, config, _, _ = get_message(config, user_id)
+            self._publish_message(config_topic, json.dumps(config), True)
 
     def update_one_userid(
         self,
@@ -268,10 +276,10 @@ class MQTTSensorUpdator:
         :param lastdays_usages: List of daily usages for the last days.
         """
         # Publish balance
-        self._process_message(MQTT_MsgEnum.CURRENT_BALANCE_MSG, user_id, balance)
+        self._publish_value(MQTT_MsgEnum.CURRENT_BALANCE_MSG, user_id, balance)
 
         # Publish last daily usage
-        self._process_message(
+        self._publish_value(
             MQTT_MsgEnum.LASTDAILY_USAGE_MSG,
             user_id,
             last_daily_usage,
@@ -279,21 +287,21 @@ class MQTTSensorUpdator:
         )
 
         # Publish monthly charge
-        self._process_message(MQTT_MsgEnum.MONTH_CHARGE_MSG, user_id, month_charge)
+        self._publish_value(MQTT_MsgEnum.MONTH_CHARGE_MSG, user_id, month_charge)
 
         # Publish monthly usage
-        self._process_message(MQTT_MsgEnum.MONTH_USAGE_MSG, user_id, month_usage)
+        self._publish_value(MQTT_MsgEnum.MONTH_USAGE_MSG, user_id, month_usage)
 
         # Publish yearly charge
-        self._process_message(MQTT_MsgEnum.YEARLY_CHARGE_MSG, user_id, yearly_charge)
+        self._publish_value(MQTT_MsgEnum.YEARLY_CHARGE_MSG, user_id, yearly_charge)
 
         # Publish yearly usage
-        self._process_message(MQTT_MsgEnum.YEARLY_USAGE_MSG, user_id, yearly_usage)
+        self._publish_value(MQTT_MsgEnum.YEARLY_USAGE_MSG, user_id, yearly_usage)
 
         # Optionally publish last days' usages
         if lastdays_usages:
             for day, usage in lastdays_usages:
-                self._process_message(
+                self._publish_value(
                     MQTT_MsgEnum.LASTDAILY_USAGE_MSG,
                     user_id,
                     usage,
