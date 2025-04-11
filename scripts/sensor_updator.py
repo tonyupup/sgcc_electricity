@@ -214,7 +214,7 @@ class MQTTSensorUpdator:
         except:
             return False         
         
-    def _publish_message(self, topic: str, payload: str, retain: bool = True):
+    def _publish_message(self, topic: str, payload: str, retain: bool = False):
         """
         Publish a message to the MQTT broker.
 

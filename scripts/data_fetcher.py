@@ -332,6 +332,7 @@ class DataFetcher:
                             month_usage,
                             lastdays_usages,
                         )
+                    logging.info("success update sensor for user_id: %s", user_id)
             except (sel_ex.NoSuchElementException, sel_ex.TimeoutException) as e:
                 if userid_index != len(user_id_list):
                     logging.info(

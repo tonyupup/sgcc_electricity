@@ -48,9 +48,7 @@ def main():
             os.environ["RETRY_WAIT_TIME_OFFSET_UNIT"] = str(
                 options.get("RETRY_WAIT_TIME_OFFSET_UNIT", 10)
             )
-            os.environ["DATA_RETENTION_DAYS"] = str(
-                options.get("DATA_RETENTION_DAYS", 7)
-            )
+            os.environ["DATA_RETENTION_DAYS"] = str(options.get("DATA_RETENTION_DAYS"))
             os.environ["RECHARGE_NOTIFY"] = str(
                 options.get("RECHARGE_NOTIFY", "false")
             ).lower()

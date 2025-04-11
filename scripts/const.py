@@ -43,7 +43,7 @@ CURRENT_BALANCE_MSG = {
     "unit_of_measurement": "CNY",
     "icon": "mdi:currency-cny",
     "json_attributes_topic": "homeassistant/sensor/sgcc_current_electricity_balance_{user_id}/attr",
-    "json_attributes_template": "{{ value_json }}",
+    "json_attributes_template": "{{ value }}",
     "value_template": "{{ float(value) }}",
 }
 
@@ -61,7 +61,7 @@ LASTDAILY_USAGE_MSG = {
     "unit_of_measurement": "kWh",
     "icon": "mdi:flash",
     "json_attributes_topic": "homeassistant/sensor/sgcc_daily_electricity_usage_{user_id}/attr",
-    "json_attributes_template": "{{ value_json }}",
+    "json_attributes_template": "{{ value }}",
     "value_template": "{{ float(value) }}",
 }
 
@@ -78,7 +78,7 @@ LASTDAILY_CHARGE_MSG = {
     "unit_of_measurement": "CNY",
     "icon": "mdi:currency-cny",
     "json_attributes_topic": "homeassistant/sensor/sgcc_daily_electricity_charge_{user_id}/attr",
-    "json_attributes_template": "{{ value_json }}",
+    "json_attributes_template": "{{ value }}",
     "value_template": "{{ float(value) }}",
 }
 
@@ -93,7 +93,7 @@ MONTH_USAGE_MSG = {
     "unit_of_measurement": "kWh",
     "icon": "mdi:flash",
     "json_attributes_topic": "homeassistant/sensor/sgcc_month_electricity_usage_{user_id}/attr",
-    "json_attributes_template": "{{ value_json }}",
+    "json_attributes_template": "{{ value }}",
     "value_template": "{{ float(value) }}",
 }
 # 当月电费
@@ -107,7 +107,7 @@ MONTH_CHARGE_MSG = {
     "unit_of_measurement": "CNY",
     "icon": "mdi:currency-cny",
     "json_attributes_topic": "homeassistant/sensor/sgcc_month_electricity_charge_{user_id}/attr",
-    "json_attributes_template": "{{ value_json }}",
+    "json_attributes_template": "{{ value }}",
     "value_template": "{{ float(value) }}",
 }
 # 当年用电量
@@ -121,7 +121,7 @@ YEARLY_USAGE_MSG = {
     "unit_of_measurement": "kWh",
     "icon": "mdi:flash",
     "json_attributes_topic": "homeassistant/sensor/sgcc_yearly_electricity_usage_{user_id}/attr",
-    "json_attributes_template": "{{ value_json }}",
+    "json_attributes_template": "{{ value }}",
     "value_template": "{{ float(value) }}",
 }
 # 当年电费
@@ -137,7 +137,7 @@ YEARLY_CHARGE_MSG = {
     "unit_of_measurement": "CNY",
     "icon": "mdi:currency-cny",
     "json_attributes_topic": "homeassistant/sensor/sgcc_yearly_electricity_charge_{user_id}/attr",
-    "json_attributes_template": "{{ value_json }}",
+    "json_attributes_template": "{{ value }}",
     "value_template": "{{ float(value) }}",
 }
 
