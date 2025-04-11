@@ -20,53 +20,6 @@ BALANCE_UNIT = "CNY"
 USAGE_UNIT = "kWh"
 
 
-class MQTT_MsgEnum(Enum):
-    CURRENT_BALANCE_MSG = 1
-    LASTDAILY_USAGE_MSG = 2
-    LASTDAILY_CHARGE_MSG = 3
-    MONTH_USAGE_MSG = 4
-    MONTH_CHARGE_MSG = 5
-    YEARLY_USAGE_MSG = 6
-    YEARLY_CHARGE_MSG = 7
-
-
-def get_message(type: MQTT_MsgEnum, user_id: str):
-    config_topic = None
-    device_msg = SGCC_DEVICE_MSG.copy()
-    device_msg["identifiers"][0] = device_msg["identifiers"][0].format(user_id=user_id)
-    device_msg["serial_number"] = user_id
-    config_msg = None
-    if type == MQTT_MsgEnum.CURRENT_BALANCE_MSG:
-        config_msg = CURRENT_BALANCE_MSG.copy()
-        config_topic = CURRENT_BALANCE_CONFIG_TOPIC
-    elif type == MQTT_MsgEnum.LASTDAILY_CHARGE_MSG:
-        config_msg = LASTDAILY_CHARGE_MSG.copy()
-        config_topic = LASTDAILY_CHARGE_CONFIG_TOPIC
-    elif type == MQTT_MsgEnum.LASTDAILY_USAGE_MSG:
-        config_msg = LASTDAILY_USAGE_MSG.copy()
-        config_topic = LASTDAILY_USAGE_CONFIG_TOPIC
-    elif type == MQTT_MsgEnum.MONTH_CHARGE_MSG:
-        config_msg = MONTH_CHARGE_MSG.copy()
-        config_topic = MONTH_CHARGE_CONFIG_TOPIC
-    elif type == MQTT_MsgEnum.MONTH_USAGE_MSG:
-        config_msg = MONTH_USAGE_MSG.copy()
-        config_topic = MONTH_USAGE_CONFIG_TOPIC
-    elif type == MQTT_MsgEnum.YEARLY_CHARGE_MSG:
-        config_msg = YEARLY_CHARGE_MSG.copy()
-        config_topic = YEARLY_CHARGE_CONFIG_TOPIC
-    elif type == MQTT_MsgEnum.YEARLY_USAGE_MSG:
-        config_msg = YEARLY_USAGE_MSG.copy()
-        config_topic = YEARLY_USAGE_CONFIG_TOPIC
-
-    config_msg["unique_id"] = config_msg["unique_id"].format(user_id=user_id)
-    config_msg["state_topic"] = config_msg["state_topic"].format(user_id=user_id)
-    config_msg["json_attributes_topic"] = config_msg["json_attributes_topic"].format(
-        user_id=user_id
-    )
-
-    return config_topic, config_msg, config_msg["state_topic"], config_msg["json_attributes_topic"]
-
-
 # mqtt message
 SGCC_DEVICE_MSG = {
     "identifiers": [
@@ -96,7 +49,9 @@ CURRENT_BALANCE_MSG = {
 
 
 # 昨日用电量
-LASTDAILY_USAGE_CONFIG_TOPIC = "homeassistant/sensor/sgcc_daily_electricity_usage/config"
+LASTDAILY_USAGE_CONFIG_TOPIC = (
+    "homeassistant/sensor/sgcc_daily_electricity_usage/config"
+)
 LASTDAILY_USAGE_MSG = {
     "name": "昨日用电量",
     "unique_id": "sgcc_daily_electricity_usage_{user_id}",
@@ -111,7 +66,9 @@ LASTDAILY_USAGE_MSG = {
 }
 
 # 昨日电费
-LASTDAILY_CHARGE_CONFIG_TOPIC = "homeassistant/sensor/sgcc_daily_electricity_charge/config"
+LASTDAILY_CHARGE_CONFIG_TOPIC = (
+    "homeassistant/sensor/sgcc_daily_electricity_charge/config"
+)
 LASTDAILY_CHARGE_MSG = {
     "name": "昨日电费",
     "unique_id": "sgcc_daily_electricity_charge_{user_id}",
@@ -183,3 +140,35 @@ YEARLY_CHARGE_MSG = {
     "json_attributes_template": "{{ value_json }}",
     "value_template": "{{ float(value) }}",
 }
+
+
+class MQTT_MsgEnum(Enum):
+    CURRENT_BALANCE_MSG = (CURRENT_BALANCE_MSG, CURRENT_BALANCE_CONFIG_TOPIC)
+    LASTDAILY_USAGE_MSG = (LASTDAILY_USAGE_MSG, LASTDAILY_USAGE_CONFIG_TOPIC)
+    LASTDAILY_CHARGE_MSG = (LASTDAILY_CHARGE_MSG, LASTDAILY_CHARGE_CONFIG_TOPIC)
+    MONTH_USAGE_MSG = (MONTH_USAGE_MSG, MONTH_USAGE_CONFIG_TOPIC)
+    MONTH_CHARGE_MSG = (MONTH_CHARGE_MSG, MONTH_CHARGE_CONFIG_TOPIC)
+    YEARLY_USAGE_MSG = (YEARLY_USAGE_MSG, YEARLY_USAGE_CONFIG_TOPIC)
+    YEARLY_CHARGE_MSG = (YEARLY_CHARGE_MSG, YEARLY_CHARGE_CONFIG_TOPIC)
+
+
+def get_message(msg_type: MQTT_MsgEnum, user_id: str):
+    device_msg = SGCC_DEVICE_MSG.copy()
+    device_msg["identifiers"][0] = device_msg["identifiers"][0].format(user_id=user_id)
+    device_msg["serial_number"] = user_id
+
+    config_msg = msg_type.value[0].copy()
+    config_topic = msg_type.value[1]
+
+    config_msg["unique_id"] = config_msg["unique_id"].format(user_id=user_id)
+    config_msg["state_topic"] = config_msg["state_topic"].format(user_id=user_id)
+    config_msg["json_attributes_topic"] = config_msg["json_attributes_topic"].format(
+        user_id=user_id
+    )
+
+    return (
+        config_topic,
+        config_msg,
+        config_msg["state_topic"],
+        config_msg["json_attributes_topic"],
+    )

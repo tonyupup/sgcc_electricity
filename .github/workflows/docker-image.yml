@@ -6,8 +6,8 @@ on:
       - 'v*'
 
 env:
-  IMAGE_ID: ghcr.io/${{ github.repository }}
-  CACHE_REF: ghcr.io/${{ github.repository }}/cache
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build_images:
@@ -27,7 +27,6 @@ jobs:
         with:
           driver-opts: |
             image=moby/buildkit:master
-          install: true
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -35,7 +34,7 @@ jobs:
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -43,10 +42,11 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_ID }}
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=tag
-            type=raw,value=latest,suffix=
+            type=raw,value=${{ matrix.type }}-latest
+            type=ref,event=tag,prefix=${{ matrix.type }}-
 
       - name: Setup build cache
         uses: actions/cache@v4

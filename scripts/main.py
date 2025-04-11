@@ -1,5 +1,4 @@
 import logging
-import logging.config
 import os
 import sys
 import time
@@ -9,9 +8,9 @@ from datetime import datetime, timedelta
 from const import *
 from data_fetcher import DataFetcher
 
-
 def main():
     global RETRY_TIMES_LIMIT
+    
     if "PYTHON_IN_DOCKER" not in os.environ:
         # 读取 .env 文件
         import dotenv
