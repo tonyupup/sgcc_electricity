@@ -264,7 +264,11 @@ class DataFetcher:
         logging.info(f"Open LOGIN_URL:{LOGIN_URL}.")
 
         if scan_qr_code:
-            return login_by_scan_QR()
+            try:
+                return login_by_scan_QR()
+            except sel_ex.TimeoutException:
+                logging.info("fail to wait qr code scan, try login by password...")
+                return login_by_username_pw()
         else:
             return login_by_username_pw()
 
