@@ -38,6 +38,9 @@ def base64_to_PLI(base64_str: str):
     return img
 
 
+T = typing.TypeVar("T")
+
+
 class DataFetcher:
     def __init__(self, username: str, password: str):
         if "PYTHON_IN_DOCKER" not in os.environ:
@@ -137,9 +140,6 @@ class DataFetcher:
             By.CLASS_NAME, "slide-verify-slider-mask-item"
         )
         ActionChains(self.__driver, 500).click_and_hold(slider).perform()
-        # 获取轨迹
-        # tracks = _get_tracks(distance)
-        # for t in tracks:
         yoffset_random = random.uniform(-2, 4)
         ActionChains(self.__driver, 500).move_by_offset(
             xoffset=distance, yoffset=yoffset_random
@@ -167,8 +167,19 @@ class DataFetcher:
         self.__driver.implicitly_wait(self.DRIVER_IMPLICITY_WAIT_TIME)
         self.__driver.maximize_window()
 
+    def _wait(
+        self,
+        method: typing.Callable[[WebDriver], typing.Union[typing.Literal[False], T]],
+        message: str = "",
+        timeout=5,
+        ignored_exceptions: WaitExcTypes | None = None,
+    ) -> T:
+        return WebDriverWait(
+            self.__driver, timeout, ignored_exceptions=ignored_exceptions
+        ).until(method=method, message=message)
+
     def _login(self, phone_code=False, scan_qr_code=False):
-        def scan_qr_code_logic():
+        def login_by_scan_QR():
             cond = (
                 By.XPATH,
                 "//div[@class='login_ewm']/div[@class='sweepCodePic']/img",
@@ -182,73 +193,80 @@ class DataFetcher:
                 except sel_ex.NoSuchElementException:
                     return False
 
-            qr_code_elem = WebDriverWait(self.__driver, 5).until(wait_for_element)
+            qr_code_elem = self._wait(wait_for_element, "fail to wait QR image")
             ActionChains(self.__driver).move_to_element(qr_code_elem).perform()
             logging.info("Please scan the QR code within 30 seconds.")
+
             # wait for login success
             return WebDriverWait(self.__driver, 30).until(
                 EC.url_to_be("https://www.95598.cn/osgweb/my95598"),
                 "Waiting for scanning qrcode login failed to redirect to target page",
             )
 
+        def login_by_username_pw():
+            # swtich to username-password login page
+            self._click_button(By.CLASS_NAME, "user")
+            logging.info("find_element 'user'.")
+            self._click_button(
+                By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[2]/span'
+            )
+            # click agree button
+            self._click_button(
+                By.XPATH,
+                '//*[@id="login_box"]/div[2]/div[1]/form/div[1]/div[3]/div/span[2]',
+            )
+            logging.info("Click the Agree option.")
+
+            # input username and password
+            input_elements = self._visible_elems(By.CLASS_NAME, "el-input__inner")
+            input_elements[0].send_keys(self._username)
+            logging.info(f"input_elements username : {self._username}")
+            input_elements[1].send_keys(self._password)
+            logging.info(f"input_elements password")
+            self._click_button(By.CLASS_NAME, "el-button.el-button--primary")
+            logging.info("Click login button.")
+            # sometimes ddddOCR may fail, so add retry logic)
+            for retry_times in range(1, self.RETRY_TIMES_LIMIT + 1):
+                im_info_elem = self._visible_elem(By.ID, "slideVerify")
+                background_image = base64_to_PLI(im_info_elem.screenshot_as_base64)
+                logging.info(f"Get electricity canvas image successfully.")
+                distance = self.onnx.get_distance(background_image)
+                logging.info(f"Image CaptCHA distance is {distance}.")
+                if distance <= 0:
+                    logging.error(
+                        f"Image CaptCHA distance is {distance}, please check the image."
+                    )
+                    self._click_button(
+                        By.XPATH, "//div[@class='slide-verify-refresh-icon']"
+                    )
+                    time.sleep(2)
+                    continue
+
+                self._sliding_track(round(distance * 1.06))  # 1.06是补偿
+                # wait for login success
+                if WebDriverWait(self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
+                    EC.url_to_be("https://www.95598.cn/osgweb/my95598")
+                ):
+                    logging.info(f"Sliding CAPTCHA recognition success, login success.")
+                    return True
+
+                logging.warning(
+                    f"wait login success jump failed, retry times: {retry_times}"
+                )
+                err_msg = self._visible_elem(By.XPATH, "//div[@class='errmsg-tip']", 10)
+                if err_msg:
+                    err_msg = err_msg.text
+                    logging.error(f"Sliding CAPTCHA recognition failed, {err_msg}")
+                    return False
+            return False
+
         self.__driver.get(LOGIN_URL)
         logging.info(f"Open LOGIN_URL:{LOGIN_URL}.")
+
         if scan_qr_code:
-            return scan_qr_code_logic()
-
-        # swtich to username-password login page
-        self._click_button(By.CLASS_NAME, "user")
-        logging.info("find_element 'user'.")
-        self._click_button(By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[2]/span')
-        # click agree button
-        self._click_button(
-            By.XPATH,
-            '//*[@id="login_box"]/div[2]/div[1]/form/div[1]/div[3]/div/span[2]',
-        )
-        logging.info("Click the Agree option.")
-
-        # input username and password
-        input_elements = self._visible_elems(By.CLASS_NAME, "el-input__inner")
-        input_elements[0].send_keys(self._username)
-        logging.info(f"input_elements username : {self._username}")
-        input_elements[1].send_keys(self._password)
-        logging.info(f"input_elements password")
-        self._click_button(By.CLASS_NAME, "el-button.el-button--primary")
-        logging.info("Click login button.")
-        # sometimes ddddOCR may fail, so add retry logic)
-        for retry_times in range(1, self.RETRY_TIMES_LIMIT + 1):
-            im_info_elem = self._visible_elem(By.ID, "slideVerify")
-            background_image = base64_to_PLI(im_info_elem.screenshot_as_base64)
-            logging.info(f"Get electricity canvas image successfully.")
-            distance = self.onnx.get_distance(background_image)
-            logging.info(f"Image CaptCHA distance is {distance}.")
-            if distance <= 0:
-                logging.error(
-                    f"Image CaptCHA distance is {distance}, please check the image."
-                )
-                self._click_button(
-                    By.XPATH, "//div[@class='slide-verify-refresh-icon']"
-                )
-                time.sleep(2)
-                continue
-
-            self._sliding_track(round(distance * 1.06))  # 1.06是补偿
-            # wait for login success
-            if WebDriverWait(self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
-                EC.url_to_be("https://www.95598.cn/osgweb/my95598")
-            ):
-                logging.info(f"Sliding CAPTCHA recognition success, login success.")
-                return True
-
-            logging.warning(
-                f"wait login success jump failed, retry times: {retry_times}"
-            )
-            err_msg = self._visible_elem(By.XPATH, "//div[@class='errmsg-tip']", 10)
-            if err_msg:
-                err_msg = err_msg.text
-                logging.error(f"Sliding CAPTCHA recognition failed, {err_msg}")
-                return False
-        return False
+            return login_by_scan_QR()
+        else:
+            return login_by_username_pw()
 
     def __enter__(self):
         try:
@@ -304,9 +322,7 @@ class DataFetcher:
         )
         for userid_index, user_id in enumerate(user_id_list):
             if user_id in self.IGNORE_USER_ID:
-                logging.info(
-                    "The user ID %s will be ignored in user_id_list", user_id
-                )
+                logging.info("The user ID %s will be ignored in user_id_list", user_id)
                 continue
             try:
                 # switch to electricity charge balance page
@@ -315,7 +331,7 @@ class DataFetcher:
 
                 with updator:
                     updator.publish_config(user_id)
-                    
+
                 ### get data
                 data = (
                     balance,
@@ -327,7 +343,7 @@ class DataFetcher:
                     month_usage,
                     lastdays_usages,
                 ) = self._get_all_data(user_id, userid_index)
-                
+
                 logging.debug("fetch data success, data %s", data)
                 with updator:
                     updator.update_one_userid(
@@ -343,13 +359,8 @@ class DataFetcher:
                     )
                 logging.info("success update sensor for user_id: %s", user_id)
             except (sel_ex.NoSuchElementException, sel_ex.TimeoutException) as e:
-                if userid_index != len(user_id_list):
-                    logging.info(
-                        f"The current user {user_id} data fetching failed {e}, the next user data will be fetched."
-                    )
-                else:
-                    logging.info(f"The user {user_id} data fetching failed, {e}")
-                    logging.info("Webdriver quit after fetching data successfully.")
+                logging.info("The user %s data fetching failed, %e", user_id, e)
+        logging.info("run fetch task has completed.")
 
     def _get_current_userid(self):
         return self.__driver.find_element(
@@ -422,22 +433,14 @@ class DataFetcher:
     def _get_user_ids(self):
         try:
             # 刷新网页
-            element = WebDriverWait(
-                self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME
-            ).until(EC.presence_of_element_located((By.CLASS_NAME, "el-dropdown")))
+            element = self._wait(EC.presence_of_element_located((By.CLASS_NAME, "el-dropdown")))
             # click roll down button for user id
             self._click_button(By.XPATH, "//div[@class='el-dropdown']/span")
 
             # wait for roll down menu displayed
-            target = self.__driver.find_element(
-                By.CLASS_NAME, "el-dropdown-menu.el-popper"
-            ).find_element(By.TAG_NAME, "li")
-
-            WebDriverWait(self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
-                EC.visibility_of(target)
-            )
-
-            WebDriverWait(self.__driver, self.DRIVER_IMPLICITY_WAIT_TIME).until(
+            self._visible_elem(By.CLASS_NAME, "el-dropdown-menu.el-popper")
+                
+            self._wait(
                 EC.text_to_be_present_in_element(
                     (By.XPATH, "//ul[@class='el-dropdown-menu el-popper']/li"), ":"
                 )

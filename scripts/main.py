@@ -8,9 +8,10 @@ from datetime import datetime, timedelta
 from const import *
 from data_fetcher import DataFetcher
 
+
 def main():
     global RETRY_TIMES_LIMIT
-    
+
     if "PYTHON_IN_DOCKER" not in os.environ:
         # 读取 .env 文件
         import dotenv
@@ -106,7 +107,8 @@ def run_task(data_fetcher: DataFetcher):
     for retry_times in range(1, RETRY_TIMES_LIMIT + 1):
         with data_fetcher:
             return data_fetcher.fetch()
-        
+
+
 def logger_init(level: str):
     logger = logging.getLogger()
     logger.setLevel(level)
