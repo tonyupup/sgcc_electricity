@@ -25,6 +25,7 @@ SGCC_DEVICE_MSG = {
     "identifiers": [
         "sgcc_{user_id}",
     ],
+    "model": None,
     "name": "国家电网",
     "manufacturer": "95598.cn",
     "serial_number": "{user_id}",
@@ -155,7 +156,7 @@ class MQTT_MsgEnum(Enum):
 def get_message(msg_type: MQTT_MsgEnum, user_id: str):
     device_msg = SGCC_DEVICE_MSG.copy()
     device_msg["identifiers"][0] = device_msg["identifiers"][0].format(user_id=user_id)
-    device_msg["serial_number"] = user_id
+    device_msg["model"] = device_msg["serial_number"] = user_id
 
     config_msg = msg_type.value[0].copy()
     config_topic = msg_type.value[1]
