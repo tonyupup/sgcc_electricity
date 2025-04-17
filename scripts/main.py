@@ -79,17 +79,11 @@ def main():
             )
             sys.exit()
 
-    logging.info(
-        f"The current repository version is {VERSION}, and the repository address is https://github.com/ARC-MX/sgcc_electricity_new.git"
-    )
+
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logging.info(f"The current date is {current_datetime}.")
 
     fetcher = DataFetcher(PHONE_NUMBER, PASSWORD)
-    logging.info(
-        f"The current logged-in user name is {PHONE_NUMBER}, the homeassistant address is {HASS_URL}, and the program will be executed every day at {JOB_START_TIME}."
-    )
-
     next_run_time = datetime.strptime(JOB_START_TIME, "%H:%M") + timedelta(hours=12)
     logging.info(
         f'Run job now! The next run will be at {JOB_START_TIME} and {next_run_time.strftime("%H:%M")} every day'
