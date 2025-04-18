@@ -5,6 +5,7 @@ import time
 import schedule
 import json
 from datetime import datetime, timedelta
+import signal
 from const import *
 from data_fetcher import DataFetcher
 
@@ -79,18 +80,21 @@ def main():
             )
             sys.exit()
 
-
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logging.info(f"The current date is {current_datetime}.")
 
     fetcher = DataFetcher(PHONE_NUMBER, PASSWORD)
     next_run_time = datetime.strptime(JOB_START_TIME, "%H:%M") + timedelta(hours=12)
     logging.info(
-        f'Run job now! The next run will be at {JOB_START_TIME} and {next_run_time.strftime("%H:%M")} every day'
+        f"Run job now! The next run will be at {JOB_START_TIME} and {next_run_time.strftime('%H:%M')} every day"
     )
     schedule.every().day.at(JOB_START_TIME).do(run_task, fetcher)
     schedule.every().day.at(next_run_time.strftime("%H:%M")).do(run_task, fetcher)
     run_task(fetcher)
+
+    signal.signal(
+        signal.SIGUSR1, lambda sig, _: sig == signal.SIGUSR1 and run_task(fetcher)
+    )
 
     while True:
         schedule.run_pending()
