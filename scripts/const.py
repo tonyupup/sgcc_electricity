@@ -19,13 +19,14 @@ MONTH_CHARGE_SENSOR_NAME = "sensor.month_electricity_charge"
 BALANCE_UNIT = "CNY"
 USAGE_UNIT = "kWh"
 
-
 # mqtt message
 SGCC_DEVICE_MSG = {
-    "identifiers": [
-        "sgcc_{user_id}",
+    "identifiers": None,
+    "connections": [
+        "no",
+        None,
     ],
-    "model": None,
+    "model": "SGCC_Device",
     "name": "国家电网",
     "manufacturer": "95598.cn",
     "serial_number": "{user_id}",
@@ -74,7 +75,7 @@ LASTDAILY_CHARGE_MSG = {
     "name": "昨日电费",
     "unique_id": "sgcc_daily_electricity_charge_{user_id}",
     "device_class": "monetary",
-    "state_class": "total",
+    "state_class": "total_increasing",
     "state_topic": "homeassistant/sensor/sgcc_daily_electricity_charge_{user_id}/state",
     "unit_of_measurement": "CNY",
     "icon": "mdi:currency-cny",
@@ -103,7 +104,7 @@ MONTH_CHARGE_MSG = {
     "name": "当月电费",
     "unique_id": "sgcc_month_electricity_charge_{user_id}",
     "device_class": "monetary",
-    "state_class": "total",
+    "state_class": "total_increasing",
     "state_topic": "homeassistant/sensor/sgcc_month_electricity_charge_{user_id}/state",
     "unit_of_measurement": "CNY",
     "icon": "mdi:currency-cny",
@@ -133,7 +134,7 @@ YEARLY_CHARGE_MSG = {
     "name": "当年电费",
     "unique_id": "sgcc_yearly_electricity_charge_{user_id}",
     "device_class": "monetary",
-    "state_class": "total",
+    "state_class": "total_increasing",
     "state_topic": "homeassistant/sensor/sgcc_yearly_electricity_charge_{user_id}/state",
     "unit_of_measurement": "CNY",
     "icon": "mdi:currency-cny",
@@ -155,8 +156,8 @@ class MQTT_MsgEnum(Enum):
 
 def get_message(msg_type: MQTT_MsgEnum, user_id: str):
     device_msg = SGCC_DEVICE_MSG.copy()
-    device_msg["identifiers"][0] = device_msg["identifiers"][0].format(user_id=user_id)
-    device_msg["model"] = device_msg["serial_number"] = user_id
+    device_msg["identifiers"] = f"sgcc_{user_id}"
+    device_msg["connections"][1] = device_msg["serial_number"] = user_id
 
     config_msg = msg_type.value[0].copy()
     config_topic = msg_type.value[1]

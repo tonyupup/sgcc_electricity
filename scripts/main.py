@@ -1,11 +1,12 @@
+import json
 import logging
 import os
+import signal
 import sys
 import time
-import schedule
-import json
 from datetime import datetime, timedelta
-import signal
+
+import schedule
 from const import *
 from data_fetcher import DataFetcher
 
@@ -24,10 +25,8 @@ def main():
         try:
             PHONE_NUMBER = options.get("PHONE_NUMBER")
             PASSWORD = options.get("PASSWORD")
-            HASS_URL = options.get("HASS_URL")
             JOB_START_TIME = options.get("JOB_START_TIME", "07:00")
             LOG_LEVEL = options.get("LOG_LEVEL", "INFO")
-            VERSION = os.getenv("VERSION")
             RETRY_TIMES_LIMIT = int(options.get("RETRY_TIMES_LIMIT", 5))
 
             logger_init(LOG_LEVEL)
@@ -56,41 +55,42 @@ def main():
             ).lower()
             os.environ["BALANCE"] = str(options.get("BALANCE", 5.0))
             os.environ["PUSHPLUS_TOKEN"] = options.get("PUSHPLUS_TOKEN", "")
-            logging.info(f"当前以Homeassistant Add-on 形式运行.")
+            logging.info("当前以Homeassistant Add-on 形式运行.")
         except Exception as e:
             logging.error(
-                f"Failing to read the options.json file, the program will exit with an error message: {e}."
+                "Failing to read the options.json file, the program will exit with an error message: %s.",
+                e,
             )
             sys.exit()
     else:
         try:
             PHONE_NUMBER = os.getenv("PHONE_NUMBER")
             PASSWORD = os.getenv("PASSWORD")
-            HASS_URL = os.getenv("HASS_URL")
             JOB_START_TIME = os.getenv("JOB_START_TIME", "07:00")
             LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-            VERSION = os.getenv("VERSION")
-            RETRY_TIMES_LIMIT = int(os.getenv("RETRY_TIMES_LIMIT", 5))
+            RETRY_TIMES_LIMIT = int(os.getenv("RETRY_TIMES_LIMIT", "5"))
 
             logger_init(LOG_LEVEL)
-            logging.info(f"The current run runs as a docker image.")
+            logging.info("The current run runs as a docker image.")
         except Exception as e:
             logging.error(
-                f"Failing to read the .env file, the program will exit with an error message: {e}."
+                "Failing to read the .env file, the program will exit with an error message: %s.",
+                e,
             )
             sys.exit()
 
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    logging.info(f"The current date is {current_datetime}.")
+    logging.info("The current date is %s.", current_datetime)
 
     fetcher = DataFetcher(PHONE_NUMBER, PASSWORD)
     next_run_time = datetime.strptime(JOB_START_TIME, "%H:%M") + timedelta(hours=12)
     logging.info(
-        f"Run job now! The next run will be at {JOB_START_TIME} and {next_run_time.strftime('%H:%M')} every day"
+        "Run job now! The next run will be at %s and %s every day",
+        JOB_START_TIME,
+        next_run_time.strftime("%H:%M"),
     )
     schedule.every().day.at(JOB_START_TIME).do(run_task, fetcher)
     schedule.every().day.at(next_run_time.strftime("%H:%M")).do(run_task, fetcher)
-    run_task(fetcher)
 
     signal.signal(
         signal.SIGUSR1, lambda sig, _: sig == signal.SIGUSR1 and run_task(fetcher)
@@ -101,22 +101,35 @@ def main():
         time.sleep(1)
 
 
+RUNNING = False
+
+
 def run_task(data_fetcher: DataFetcher):
+    global RUNNING
+    if RUNNING:
+        logging.info("has running task, break.")
+        return
+    RUNNING = True
     for retry_times in range(1, RETRY_TIMES_LIMIT + 1):
-        with data_fetcher:
-            return data_fetcher.fetch()
+        try:
+            with data_fetcher:
+                data_fetcher.fetch()
+                RUNNING = False
+                return
+        except Exception:
+            logging.warning("run %d times failed, retry", retry_times)
 
 
 def logger_init(level: str):
     logger = logging.getLogger()
     logger.setLevel(level)
     logging.getLogger("urllib3").setLevel(logging.CRITICAL)
-    format = logging.Formatter(
+    format_handle = logging.Formatter(
         "%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] ---- %(message)s",
         "%Y-%m-%d %H:%M:%S",
     )
     sh = logging.StreamHandler(stream=sys.stdout)
-    sh.setFormatter(format)
+    sh.setFormatter(format_handle)
     logger.addHandler(sh)
 
 

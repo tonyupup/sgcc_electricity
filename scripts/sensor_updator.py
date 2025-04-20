@@ -1,17 +1,17 @@
-import logging
 import os
+import json
+import typing
+import logging
 from datetime import datetime, timedelta
 
 import requests
-import typing
-from const import *
 from paho.mqtt.client import Client
 from paho.mqtt.enums import MQTTErrorCode
-import json
+
+from const import *
 
 
 class SensorUpdator:
-
     def __init__(self):
         HASS_URL = os.getenv("HASS_URL")
         HASS_TOKEN = os.getenv("HASS_TOKEN")
@@ -157,7 +157,6 @@ class SensorUpdator:
             logging.error(f"Homeassistant REST API invoke failed, reason is {e}")
 
     def balance_notify(self, user_id, balance):
-
         if self.RECHARGE_NOTIFY:
             BALANCE = float(os.getenv("BALANCE", 10.0))
             PUSHPLUS_TOKEN = os.getenv("PUSHPLUS_TOKEN").split(",")
