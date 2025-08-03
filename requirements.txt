@@ -1,6 +1,5 @@
 requests==2.31.0
 selenium==4.19.0
-schedule==1.2.1
 Pillow==10.1.0
 onnxruntime
 numpy==1.26.2

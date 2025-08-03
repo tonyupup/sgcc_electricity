@@ -5,8 +5,6 @@ import signal
 import sys
 import time
 from datetime import datetime, timedelta
-
-import schedule
 from const import *
 from data_fetcher import DataFetcher
 
@@ -25,15 +23,10 @@ def main():
         try:
             PHONE_NUMBER = options.get("PHONE_NUMBER")
             PASSWORD = options.get("PASSWORD")
-            JOB_START_TIME = options.get("JOB_START_TIME", "07:00")
             LOG_LEVEL = options.get("LOG_LEVEL", "INFO")
             RETRY_TIMES_LIMIT = int(options.get("RETRY_TIMES_LIMIT", 5))
 
             logger_init(LOG_LEVEL)
-            os.environ["HASS_URL"] = options.get(
-                "HASS_URL", "http://homeassistant.local:8123/"
-            )
-            os.environ["HASS_TOKEN"] = options.get("HASS_TOKEN", "")
             os.environ["ENABLE_DATABASE_STORAGE"] = str(
                 options.get("ENABLE_DATABASE_STORAGE", "false")
             ).lower()
@@ -54,8 +47,6 @@ def main():
                 options.get("RECHARGE_NOTIFY", "false")
             ).lower()
             os.environ["BALANCE"] = str(options.get("BALANCE", 5.0))
-            os.environ["PUSHPLUS_TOKEN"] = options.get("PUSHPLUS_TOKEN", "")
-            logging.info("当前以Homeassistant Add-on 形式运行.")
         except Exception as e:
             logging.error(
                 "Failing to read the options.json file, the program will exit with an error message: %s.",
@@ -78,32 +69,9 @@ def main():
                 e,
             )
             sys.exit()
-
-    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    logging.info("The current date is %s.", current_datetime)
-
-    fetcher = DataFetcher(PHONE_NUMBER, PASSWORD)
-    next_run_time = datetime.strptime(JOB_START_TIME, "%H:%M") + timedelta(hours=12)
-    logging.info(
-        "Run job now! The next run will be at %s and %s every day",
-        JOB_START_TIME,
-        next_run_time.strftime("%H:%M"),
-    )
-    schedule.every().day.at(JOB_START_TIME).do(run_task, fetcher)
-    schedule.every().day.at(next_run_time.strftime("%H:%M")).do(run_task, fetcher)
-
-    signal.signal(
-        signal.SIGUSR1, lambda sig, _: sig == signal.SIGUSR1 and run_task(fetcher)
-    )
-
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
-
+    run_task(DataFetcher(PHONE_NUMBER, PASSWORD))
 
 RUNNING = False
-
-
 def run_task(data_fetcher: DataFetcher):
     global RUNNING
     if RUNNING:
